@@ -14,7 +14,7 @@ enum CalendarService {
         event.title = "\(title) · Reformer \(reformerNumber)"
         event.startDate = start
         event.endDate = end
-        event.location = "Pilates in Pink, Brampton, ON"
+        event.location = "Pilates in Pink™, Brampton, ON"
         event.timeZone = StudioTime.timeZone
         event.calendar = store.defaultCalendarForNewEvents
         event.addAlarm(EKAlarm(relativeOffset: -60 * 60))

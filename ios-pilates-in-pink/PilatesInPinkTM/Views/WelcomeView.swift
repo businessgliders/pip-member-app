@@ -60,7 +60,7 @@ struct WelcomeView: View {
     private var brand: some View {
         HStack(spacing: 10) {
             BrandMark(size: 34)
-            Text("Pilates in Pink")
+            Text("Pilates in Pink™")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Theme.ink)
             Spacer()

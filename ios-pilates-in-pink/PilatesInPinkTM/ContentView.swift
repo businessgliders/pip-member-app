@@ -35,7 +35,7 @@ struct SplashView: View {
                 BrandMark(size: 112)
                     .shadow(color: Theme.pink.opacity(0.28), radius: 24, x: 0, y: 10)
                 VStack(spacing: 6) {
-                    Text("Pilates in Pink")
+                    Text("Pilates in Pink™")
                         .font(.title2.weight(.heavy))
                         .tracking(-0.4)
                         .foregroundStyle(Theme.ink)

@@ -18,7 +18,7 @@ struct AccountView: View {
                     .padding(.top, 4)
                 VStack(spacing: 10) {
                     BrandMark(size: 30)
-                    Text("Pilates in Pink · Brampton, Ontario")
+                    Text("Pilates in Pink™ · Brampton, Ontario")
                         .font(.footnote)
                         .foregroundStyle(Theme.secondaryText)
                 }
@@ -35,7 +35,7 @@ struct AccountView: View {
         .task {
             if !store.hasLoadedCredits { await store.refreshCredits() }
         }
-        .confirmationDialog("Sign out of Pilates in Pink?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of Pilates in Pink™?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) {
                 Task { await auth.signOut() }
             }
