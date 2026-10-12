@@ -1,13 +1,15 @@
 {
+  "$schema": "https://rork.com/schema/rork.json",
   "apps": [
     {
-      "name": "Pilates in Pink",
+      "name": "Pilates in Pink™ Studio",
       "path": "ios-pilates-in-pink",
       "framework": "swift",
       "settings": {
-        "swiftSibling": false
+        "swiftSibling": false,
+        "displayName": "Pilates In Pink™",
+        "iosBundleId": "com.businessgliders.pipstudio"
       }
     }
-  ],
-  "$schema": "https://rork.com/schema/rork.json"
+  ]
 }

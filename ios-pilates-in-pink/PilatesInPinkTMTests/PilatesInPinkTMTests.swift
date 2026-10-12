@@ -1,14 +1,14 @@
 //
-//  PilatesInPinkTests.swift
-//  PilatesInPinkTests
+//  PilatesInPinkTMTests.swift
+//  PilatesInPinkTMTests
 //
 //  Created by Rork on October 12, 2026.
 //
 
 import Testing
-@testable import PilatesInPink
+@testable import PilatesInPinkTM
 
-struct PilatesInPinkTests {
+struct PilatesInPinkTMTests {
 
     @Test func example() async throws {
         // Write your test here and use APIs like `#expect(...)` to check expected conditions.

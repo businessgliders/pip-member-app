@@ -1,13 +1,13 @@
 //
-//  PilatesInPinkUITestsLaunchTests.swift
-//  PilatesInPinkUITests
+//  PilatesInPinkTMUITestsLaunchTests.swift
+//  PilatesInPinkTMUITests
 //
 //  Created by Rork on October 12, 2026.
 //
 
 import XCTest
 
-final class PilatesInPinkUITestsLaunchTests: XCTestCase {
+final class PilatesInPinkTMUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true
