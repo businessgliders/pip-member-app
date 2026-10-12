@@ -59,9 +59,7 @@ struct WelcomeView: View {
 
     private var brand: some View {
         HStack(spacing: 10) {
-            ReformerIcon()
-                .stroke(Theme.ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
-                .frame(width: 40, height: 20)
+            BrandMark(size: 34)
             Text("Pilates in Pink")
                 .font(.subheadline.weight(.bold))
                 .foregroundStyle(Theme.ink)

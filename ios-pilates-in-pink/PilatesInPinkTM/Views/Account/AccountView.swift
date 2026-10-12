@@ -16,11 +16,14 @@ struct AccountView: View {
                 Button("Sign out") { isConfirmingSignOut = true }
                     .buttonStyle(PillButtonStyle(kind: .secondary))
                     .padding(.top, 4)
-                Text("Pilates in Pink · Brampton, Ontario")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 4)
+                VStack(spacing: 10) {
+                    BrandMark(size: 30)
+                    Text("Pilates in Pink · Brampton, Ontario")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 20)
         }
