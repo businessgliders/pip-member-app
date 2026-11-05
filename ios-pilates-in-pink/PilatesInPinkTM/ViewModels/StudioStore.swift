@@ -14,6 +14,11 @@ final class StudioStore {
     private(set) var creditsError: FriendlyError?
     /// Bumped after any booking action so the schedule reloads.
     private(set) var scheduleVersion = 0
+    /// Class type id → description ("What to Expect").
+    private(set) var classDescriptions: [String: String] = [:]
+    private var hasLoadedClassTypes = false
+    /// Schedule rows covering upcoming bookings, keyed by session id (for instructor, family, etc).
+    private(set) var bookingSessions: [String: ScheduleSession] = [:]
 
     private let service = StudioService()
 
@@ -27,6 +32,65 @@ final class StudioStore {
     func stationNumber(for stationId: String?) -> Int? {
         guard let stationId else { return nil }
         return stations.first { $0.id == stationId }?.number
+    }
+
+    func description(forClassType id: String?) -> String? {
+        guard let id, let text = classDescriptions[id]?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        return text
+    }
+
+    func session(for booking: Booking) -> ScheduleSession? {
+        bookingSessions[booking.classSessionId]
+    }
+
+    func loadClassTypesIfNeeded() async {
+        guard !hasLoadedClassTypes else { return }
+        do {
+            let rows = try await service.classTypes()
+            var map: [String: String] = [:]
+            for row in rows { if let d = row.description { map[row.id] = d } }
+            classDescriptions = map
+            hasLoadedClassTypes = true
+        } catch {
+            print("Class types load failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Fetches schedule rows across the upcoming bookings' range so reservation rows can show instructors.
+    func refreshBookingSessions() async {
+        let upcoming = upcomingBookings
+        guard let first = upcoming.first, let last = upcoming.last else {
+            bookingSessions = [:]
+            return
+        }
+        let from = StudioTime.startOfDay(first.startDate)
+        let to = StudioTime.addDays(1, to: StudioTime.startOfDay(last.startDate))
+        let service = self.service
+        let result = await captureResult { try await service.schedule(from: from, to: to) }
+        if case .success(let rows) = result {
+            var map: [String: ScheduleSession] = [:]
+            for row in rows { map[row.sessionId] = row }
+            bookingSessions = map
+        }
+    }
+
+    // MARK: Visits
+
+    /// Booked classes this calendar month that have already started.
+    var visitDaysThisMonth: Set<Int> {
+        let cal = StudioTime.calendar
+        let now = Date()
+        let days = bookings
+            .filter { cal.isDate($0.startDate, equalTo: now, toGranularity: .month) && $0.startDate <= now }
+            .map { cal.component(.day, from: $0.startDate) }
+        return Set(days)
+    }
+
+    var classesThisMonth: Int {
+        let cal = StudioTime.calendar
+        let now = Date()
+        return bookings.filter { cal.isDate($0.startDate, equalTo: now, toGranularity: .month) && $0.startDate <= now }.count
     }
 
     func loadSettingsIfNeeded() async {
@@ -71,6 +135,7 @@ final class StudioStore {
             if !FriendlyError.isCancellation(error) { bookingsError = FriendlyError.from(error) }
         }
         hasLoadedBookings = true
+        await refreshBookingSessions()
     }
 
     /// Loads everything besides the schedule, concurrently.
@@ -101,6 +166,7 @@ final class StudioStore {
             if !FriendlyError.isCancellation(error) { bookingsError = FriendlyError.from(error) }
         }
         hasLoadedBookings = true
+        await refreshBookingSessions()
     }
 
     /// Call after any write (success or failure) to keep every screen in sync.

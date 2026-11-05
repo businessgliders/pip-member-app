@@ -97,6 +97,14 @@ nonisolated enum StudioTime {
     /// "6:30 PM"
     static func time(_ date: Date) -> String { format(date, "h:mm a") }
 
+    /// "6:30 – 7:20 PM" (shared meridiem) or "11:30 AM – 12:20 PM"
+    static func timeRange(_ start: Date, _ end: Date) -> String {
+        if format(start, "a") == format(end, "a") {
+            return "\(format(start, "h:mm")) – \(format(end, "h:mm a"))"
+        }
+        return "\(time(start)) – \(time(end))"
+    }
+
     /// "Today", "Tomorrow" or "Tue"
     static func relativeDay(_ date: Date, now: Date = Date()) -> String {
         if isSameDay(date, now) { return "Today" }

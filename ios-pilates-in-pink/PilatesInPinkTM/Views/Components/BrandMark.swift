@@ -14,3 +14,22 @@ struct BrandMark: View {
             .accessibilityHidden(true)
     }
 }
+
+/// Mark + "Pilates in Pink™" wordmark.
+struct Wordmark: View {
+    var color: Color = Theme.ink
+    var markSize: CGFloat = 30
+    var textSize: CGFloat = 17
+
+    var body: some View {
+        HStack(spacing: 10) {
+            BrandMark(size: markSize)
+            Text("Pilates in Pink™")
+                .font(Typo.font(textSize, .light, relativeTo: .headline))
+                .tracking(0.6)
+                .foregroundStyle(color)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Pilates in Pink")
+    }
+}

@@ -16,74 +16,100 @@ struct WelcomeView: View {
     @State private var hasAppeared: Bool = false
     @FocusState private var focused: Field?
     @Namespace private var segment
-    @ScaledMetric(relativeTo: .largeTitle) private var headlineSize: CGFloat = 46
 
     var body: some View {
-        ZStack {
-            ScreenBackground()
+        GeometryReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 26) {
-                    brand
-                    headline
-                    modePicker
-                    form
-                    messages
-                    Button(action: submit) {
-                        if isWorking {
-                            ProgressView().tint(Theme.onPink)
-                        } else {
-                            Text(mode == .signIn ? "Sign in" : "Create account")
-                        }
-                    }
-                    .buttonStyle(PillButtonStyle())
-                    .disabled(!canSubmit || isWorking)
-
-                    Button {} label: {
-                        Label("Continue with phone · Coming soon", systemImage: "iphone")
-                            .font(.subheadline.weight(.semibold))
-                    }
-                    .buttonStyle(PillButtonStyle(kind: .secondary))
-                    .disabled(true)
+                VStack(spacing: 0) {
+                    hero(height: max(340, proxy.size.height * 0.46), topInset: proxy.safeAreaInsets.top)
+                    sheet
+                        .padding(.top, -Theme.sheetRadius)
+                        .frame(minHeight: proxy.size.height * 0.54 + proxy.safeAreaInsets.bottom, alignment: .top)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 24)
-                .padding(.bottom, 40)
             }
+            .scrollIndicators(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            .ignoresSafeArea(.container, edges: .top)
         }
+        .background(Theme.background.ignoresSafeArea())
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.8).delay(0.05)) { hasAppeared = true }
+            withAnimation(.easeOut(duration: 1.0).delay(0.1)) { hasAppeared = true }
         }
         .sensoryFeedback(.selection, trigger: mode)
     }
 
-    private var brand: some View {
-        HStack(spacing: 10) {
-            BrandMark(size: 34)
-            Text("Pilates in Pink™")
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(Theme.ink)
-            Spacer()
-            Text("Brampton")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.caramel)
+    // MARK: Hero
+
+    private func hero(height: CGFloat, topInset: CGFloat) -> some View {
+        ZStack(alignment: .bottomLeading) {
+            StudioPhoto(name: "signin_bg", tone: .deep, fadeIn: true)
+            LinearGradient(
+                colors: [Color.black.opacity(0.3), .clear, Color.black.opacity(0.6)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            VStack(alignment: .leading) {
+                Wordmark(color: .white, markSize: 30, textSize: 17)
+                    .padding(.top, topInset + 12)
+                Spacer()
+                Text("Your reformer\nis waiting.")
+                    .font(Typo.font(42, .light, relativeTo: .largeTitle))
+                    .tracking(-0.8)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared ? 0 : 12)
+                    .accessibilityAddTraits(.isHeader)
+                Text("Book your class and choose your exact spot in the room.")
+                    .font(Typo.font(16, .regular, relativeTo: .body))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .padding(.top, 6)
+                    .opacity(hasAppeared ? 1 : 0)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, Theme.sheetRadius + 26)
+            .frame(maxWidth: Theme.readableWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .frame(height: height + topInset)
+        .clipped()
     }
 
-    private var headline: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Your reformer\nis waiting.")
-                .font(.system(size: headlineSize, weight: .heavy))
-                .tracking(-1.6)
-                .foregroundStyle(Theme.ink)
-                .fixedSize(horizontal: false, vertical: true)
-            Text("Book your class and choose your exact spot in the room.")
-                .font(.body)
-                .foregroundStyle(Theme.secondaryText)
+    // MARK: Sheet
+
+    private var sheet: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            modePicker
+            form
+            messages
+            Button(action: submit) {
+                if isWorking {
+                    ProgressView().tint(Theme.primaryLabel)
+                } else {
+                    Text(mode == .signIn ? "Sign in" : "Create account")
+                }
+            }
+            .buttonStyle(PillButtonStyle())
+            .disabled(!canSubmit || isWorking)
+            .padding(.top, 4)
+
+            Button {} label: {
+                Text("Continue with phone · coming soon")
+            }
+            .buttonStyle(QuietButtonStyle())
+            .frame(maxWidth: .infinity)
+            .disabled(true)
+            .opacity(0.5)
         }
-        .padding(.top, 28)
-        .opacity(hasAppeared ? 1 : 0)
-        .offset(y: hasAppeared ? 0 : 16)
+        .padding(.horizontal, 24)
+        .padding(.top, 30)
+        .padding(.bottom, 40)
+        .frame(maxWidth: 520)
+        .frame(maxWidth: .infinity)
+        .background(
+            Theme.background,
+            in: UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous)
+        )
     }
 
     private var modePicker: some View {
@@ -95,16 +121,16 @@ struct WelcomeView: View {
                         errorText = nil
                     }
                 } label: {
-                    Text(item.rawValue)
-                        .font(.subheadline.weight(.semibold))
+                    Text(item.rawValue.uppercased())
+                        .font(Typo.font(12, .medium, relativeTo: .caption))
+                        .tracking(1.4)
                         .foregroundStyle(mode == item ? Theme.ink : Theme.secondaryText)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 44)
+                        .frame(height: 42)
                         .background {
                             if mode == item {
                                 Capsule()
                                     .fill(Theme.card)
-                                    .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 3)
                                     .matchedGeometryEffect(id: "segment", in: segment)
                             }
                         }
@@ -119,7 +145,7 @@ struct WelcomeView: View {
     }
 
     private var form: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             if mode == .signUp {
                 HStack(spacing: 12) {
                     field("First name", text: $firstName, field: .firstName, content: .givenName)
@@ -130,7 +156,20 @@ struct WelcomeView: View {
             field("Email", text: $email, field: .email, content: .emailAddress, keyboard: .emailAddress)
             secureField
         }
-        .cardStyle(padding: 16)
+    }
+
+    private func fieldChrome<Content: View>(_ isFocused: Bool, @ViewBuilder content: () -> Content) -> some View {
+        content()
+            .font(Typo.body)
+            .padding(.horizontal, 16)
+            .frame(height: 56)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(isFocused ? Theme.ink.opacity(0.4) : Color.clear, lineWidth: 1)
+            )
+            .foregroundStyle(Theme.ink)
+            .animation(.easeOut(duration: 0.2), value: isFocused)
     }
 
     private func field(
@@ -140,11 +179,8 @@ struct WelcomeView: View {
         content: UITextContentType,
         keyboard: UIKeyboardType = .default
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.secondaryText)
-            TextField("", text: text)
+        fieldChrome(focused == field) {
+            TextField("", text: text, prompt: Text(title).foregroundStyle(Theme.secondaryText))
                 .textContentType(content)
                 .keyboardType(keyboard)
                 .textInputAutocapitalization(field == .email ? .never : .words)
@@ -152,36 +188,17 @@ struct WelcomeView: View {
                 .focused($focused, equals: field)
                 .submitLabel(.next)
                 .onSubmit { advance(from: field) }
-                .padding(.horizontal, 14)
-                .frame(height: 50)
-                .background(Theme.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(focused == field ? Theme.pink : Color.clear, lineWidth: 1.5)
-                )
-                .foregroundStyle(Theme.ink)
                 .accessibilityLabel(title)
         }
     }
 
     private var secureField: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Password")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.secondaryText)
-            SecureField("", text: $password)
+        fieldChrome(focused == .password) {
+            SecureField("", text: $password, prompt: Text("Password").foregroundStyle(Theme.secondaryText))
                 .textContentType(mode == .signIn ? .password : .newPassword)
                 .focused($focused, equals: .password)
                 .submitLabel(.go)
                 .onSubmit(submit)
-                .padding(.horizontal, 14)
-                .frame(height: 50)
-                .background(Theme.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .strokeBorder(focused == .password ? Theme.pink : Color.clear, lineWidth: 1.5)
-                )
-                .foregroundStyle(Theme.ink)
                 .accessibilityLabel("Password")
         }
     }
@@ -190,20 +207,20 @@ struct WelcomeView: View {
     private var messages: some View {
         if let errorText {
             Label(errorText, systemImage: "sparkle")
-                .font(.subheadline)
-                .foregroundStyle(Theme.ink)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.caramelSoft, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-                .transition(.opacity)
-        }
-        if let infoText {
-            Label(infoText, systemImage: "envelope.open")
-                .font(.subheadline)
+                .font(Typo.secondary)
                 .foregroundStyle(Theme.ink)
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.blush, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .transition(.opacity)
+        }
+        if let infoText {
+            Label(infoText, systemImage: "envelope.open")
+                .font(Typo.secondary)
+                .foregroundStyle(Theme.ink)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .transition(.opacity)
         }
     }

@@ -70,6 +70,15 @@ nonisolated struct StudioService: Sendable {
         return rows.sorted { $0.startDate < $1.startDate }
     }
 
+    /// Class descriptions for "What to Expect" (read-only, cached by the store).
+    func classTypes() async throws -> [ClassTypeInfo] {
+        let response = try await client
+            .from("class_types")
+            .select("id, description")
+            .execute()
+        return try decode([ClassTypeInfo].self, from: response.data)
+    }
+
     // MARK: Writes (RPC only)
 
     func bookClass(sessionId: String, stationId: String) async throws {

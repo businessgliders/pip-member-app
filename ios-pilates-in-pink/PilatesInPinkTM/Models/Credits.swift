@@ -15,6 +15,21 @@ nonisolated struct Credits: Decodable, Equatable, Sendable {
     var renewsDate: Date? { StudioTime.parse(membershipRenewsAt) }
     var expiryDate: Date? { StudioTime.parse(nextCreditExpiry) }
 
+    /// "OBSESSED MEMBER", "PINK, I LOVE MEMBER"
+    var memberLabel: String {
+        guard let name = membershipName?.trimmingCharacters(in: .whitespaces), !name.isEmpty else {
+            return "NO ACTIVE MEMBERSHIP"
+        }
+        if name.lowercased().contains("obsessed") { return "OBSESSED MEMBER" }
+        return name.uppercased() + " MEMBER"
+    }
+
+    /// "5 credits · Pink, I Love" / "Unlimited · Pink, I'm Obsessed"
+    var summaryLine: String {
+        if let name = membershipName, !name.isEmpty { return "\(chipLabel) · \(name)" }
+        return chipLabel
+    }
+
     /// "Unlimited", "1 credit", "5 credits"
     var chipLabel: String {
         if isUnlimited { return "Unlimited" }

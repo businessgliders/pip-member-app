@@ -1,12 +1,18 @@
 import SwiftUI
+import UIKit
 
 struct ClassDetailView: View {
     @Environment(StudioStore.self) private var store
+    @Environment(\.openURL) private var openURL
     @State private var vm: ClassDetailViewModel
-    @State private var isConfirmingCancel: Bool = false
+    @State private var isConfirmingCancel = false
+    @State private var calendarNote: String?
+    @State private var calendarAdded = 0
+    let isEmbedded: Bool
 
-    init(route: ClassRoute) {
+    init(route: ClassRoute, isEmbedded: Bool = false) {
         _vm = State(initialValue: ClassDetailViewModel(route: route))
+        self.isEmbedded = isEmbedded
     }
 
     private var policy: CancellationPolicy? {
@@ -16,57 +22,67 @@ struct ClassDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                if let session = vm.session {
-                    header(session)
-                    if let error = vm.actionError {
-                        ErrorCard(error: error, onDismiss: {
-                            withAnimation(Theme.spring) { vm.actionError = nil }
-                        })
-                        .transition(.move(edge: .top).combined(with: .opacity))
+            VStack(spacing: 0) {
+                hero
+                VStack(alignment: .leading, spacing: 22) {
+                    if let session = vm.session {
+                        header(session)
+                        if let error = vm.actionError {
+                            ErrorCard(error: error, onDismiss: {
+                                withAnimation(Theme.spring) { vm.actionError = nil }
+                            })
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                        Hairline()
+                        pickerSection
+                        contextLine
+                        aboutSection(session)
+                    } else if let error = vm.loadError {
+                        ErrorCard(error: error, actionTitle: "Try again") {
+                            Task { await vm.load(store: store) }
+                        }
+                    } else {
+                        loadingSkeleton
                     }
-                    pickerSection
-                    contextLine
-                } else if let error = vm.loadError {
-                    ErrorCard(error: error, actionTitle: "Try again") {
-                        Task { await vm.load(store: store) }
-                    }
-                    .padding(.top, 12)
-                } else {
-                    loadingSkeleton
                 }
+                .padding(.horizontal, 24)
+                .padding(.trailing, isEmbedded ? 76 : 0)
+                .padding(.top, 26)
+                .padding(.bottom, 28)
+                .frame(maxWidth: Theme.readableWidth)
+                .frame(maxWidth: .infinity)
+                .background(Theme.background)
+                .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous))
+                .padding(.top, -Theme.sheetRadius)
+                .animation(Theme.spring, value: vm.actionError)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
-            .animation(Theme.spring, value: vm.actionError)
         }
         .scrollIndicators(.hidden)
-        .background(ScreenBackground())
+        .ignoresSafeArea(.container, edges: .top)
+        .background(Theme.background.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
-            if vm.session != nil {
-                actionBar
-            }
+            if vm.session != nil { actionBar }
         }
+        .overlay(alignment: .top) { topButtons }
         .overlay(alignment: .top) {
-            if let toast = vm.toast {
+            if let toast = vm.toast ?? calendarNote {
                 ToastView(text: toast)
-                    .padding(.top, 8)
+                    .padding(.top, 60)
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .animation(Theme.spring, value: vm.toast)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
+        .animation(Theme.spring, value: calendarNote)
+        .toolbar(.hidden, for: .navigationBar)
         .refreshable { await vm.load(store: store) }
-        .task { await vm.load(store: store) }
+        .task {
+            await vm.load(store: store)
+            await store.loadClassTypesIfNeeded()
+        }
         .sheet(item: $vm.confirmation) { confirmation in
             BookingConfirmationSheet(confirmation: confirmation)
         }
-        .alert(
-            "Cancel this booking?",
-            isPresented: $isConfirmingCancel
-        ) {
+        .alert("Cancel this booking?", isPresented: $isConfirmingCancel) {
             Button("Cancel booking", role: .destructive) {
                 Task { await vm.cancel(store: store, windowText: policy?.windowText ?? "the cancellation window") }
             }
@@ -80,63 +96,123 @@ struct ClassDetailView: View {
         .sensoryFeedback(.success, trigger: vm.successTick)
         .sensoryFeedback(.warning, trigger: vm.errorTick)
         .sensoryFeedback(.selection, trigger: vm.selectedStationId)
+        .sensoryFeedback(.success, trigger: calendarAdded)
+    }
+
+    // MARK: Hero
+
+    private var hero: some View {
+        StudioPhoto(name: vm.session?.photoName ?? "studio_brampton", tone: .deep, fadeIn: true)
+            .containerRelativeFrame(.vertical) { height, _ in height * 0.4 }
+            .frame(maxWidth: .infinity)
+            .overlay {
+                LinearGradient(colors: [Color.black.opacity(0.28), .clear], startPoint: .top, endPoint: .center)
+            }
+            .overlay(alignment: .bottomLeading) {
+                if let family = vm.session?.family {
+                    PhotoLabelPill(text: family.displayName)
+                        .padding(.leading, 24)
+                        .padding(.bottom, Theme.sheetRadius + 16)
+                }
+            }
+            .clipped()
+    }
+
+    private var topButtons: some View {
+        HStack {
+            if !isEmbedded { GlassBackButton() }
+            Spacer()
+            if let session = vm.session {
+                ShareLink(
+                    item: StudioInfo.website ?? URL(string: "https://www.pilatesinpinkstudio.com")!,
+                    subject: Text(session.name),
+                    message: Text(shareMessage(session))
+                ) {
+                    Image(systemName: "square.and.arrow.up")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .glass(Circle(), interactive: true)
+                .accessibilityLabel("Share class")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.trailing, isEmbedded ? 76 : 0)
+        .padding(.top, 6)
+    }
+
+    private func shareMessage(_ session: ScheduleSession) -> String {
+        "Join me for \(session.name) at Pilates in Pink™ Brampton — \(StudioTime.format(session.startDate, "EEEE, MMM d")) at \(StudioTime.time(session.startDate))."
     }
 
     // MARK: Header
 
     private func header(_ session: ScheduleSession) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ScreenTitle(text: session.name)
-            Text("\(StudioTime.format(session.startDate, "EEE, MMM d")) · \(StudioTime.time(session.startDate))")
-                .font(.title3.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(Theme.ink)
-            HStack(spacing: 8) {
-                Text(metaLine(session))
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.secondaryText)
-                if session.isSub {
-                    Chip(text: "Sub", style: .outline)
+        VStack(alignment: .leading, spacing: 14) {
+            EyebrowText(StudioTime.format(session.startDate, "EEEE, MMM d"))
+            ScreenTitle(text: session.name + (session.isSub ? " (Sub)" : ""), size: 32)
+
+            HStack(alignment: .center) {
+                Text(StudioTime.timeRange(session.startDate, session.endDate))
+                    .font(Typo.font(28, .light, relativeTo: .title))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer()
+                Button(action: { addToCalendar(session) }) {
+                    Image(systemName: "calendar.badge.plus")
+                        .font(.system(size: 17, weight: .light))
+                        .foregroundStyle(Theme.ink)
+                        .frame(width: 48, height: 48)
+                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .buttonStyle(PressableCardStyle())
+                .glass(RoundedRectangle(cornerRadius: 14, style: .continuous), interactive: true)
+                .accessibilityLabel("Add to Calendar")
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                if let instructor = session.instructorName, !instructor.isEmpty {
+                    infoLine("Instructor", instructor)
+                }
+                if let level = session.classLevel, !level.isEmpty {
+                    infoLine("Level", level)
                 }
             }
+
             statusChip(session)
-                .padding(.top, 4)
         }
     }
 
-    private func metaLine(_ session: ScheduleSession) -> String {
-        var parts: [String] = []
-        if let instructor = session.instructorName, !instructor.isEmpty { parts.append(instructor) }
-        if let level = session.classLevel, !level.isEmpty { parts.append(level) }
-        parts.append("\(session.durationMinutes) min")
-        return parts.joined(separator: " · ")
+    private func infoLine(_ label: String, _ value: String) -> some View {
+        (Text("\(label): ").foregroundStyle(Theme.secondaryText) + Text(value).foregroundStyle(Theme.ink))
+            .font(Typo.body)
     }
 
     @ViewBuilder
     private func statusChip(_ session: ScheduleSession) -> some View {
         switch vm.mode {
         case .booked:
-            if let number = store.stationNumber(for: vm.myStationId) {
-                Chip(text: "Booked on Reformer \(number)", style: .caramel, systemImage: "checkmark")
-            } else {
-                Chip(text: "Booked", style: .caramel, systemImage: "checkmark")
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark").font(.system(size: 12, weight: .medium))
+                Text(store.stationNumber(for: vm.myStationId).map { "Booked · Reformer \($0)" } ?? "Booked")
             }
+            .font(Typo.font(15, .medium, relativeTo: .subheadline))
+            .foregroundStyle(Theme.caramel)
         case .waitlisted:
             Chip(text: "You're on the waitlist", style: .blush)
         case .full:
-            Chip(text: "Full · Join the waitlist", style: .blush)
+            Chip(text: "Full · waitlist open", style: .blush)
         case .cancelled:
             Chip(text: "This class was cancelled", style: .outline)
         case .finished:
             Chip(text: "This class has started", style: .outline)
         case .bookable:
-            Text(session.spotsLeft == 1 ? "1 spot left" : "\(session.spotsLeft) spots left")
-                .font(.footnote.weight(.semibold))
+            Chip(text: session.spotsLeft == 1 ? "1 spot left" : "\(session.spotsLeft) spots left", style: .soft)
                 .monospacedDigit()
-                .foregroundStyle(session.spotsLeft <= 2 ? Theme.caramel : Theme.ink)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(session.spotsLeft <= 2 ? Theme.caramelSoft : Theme.softPink, in: Capsule())
         case .loading:
             EmptyView()
         }
@@ -146,29 +222,31 @@ struct ClassDetailView: View {
 
     @ViewBuilder
     private var pickerSection: some View {
-        if store.stations.isEmpty {
-            VStack(spacing: 12) {
-                SkeletonBlock(width: 120, height: 16)
-                ForEach(0..<4, id: \.self) { _ in
-                    HStack(spacing: 12) {
-                        SkeletonBlock(height: 72, radius: 18)
-                        SkeletonBlock(height: 72, radius: 18)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                SectionHeader(text: vm.isBooked ? "Your reformer" : "Choose your reformer")
+                Spacer()
+            }
+            if vm.isBooked {
+                Text("Tap a free reformer to switch spots.")
+                    .font(Typo.secondary)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            if store.stations.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        HStack(spacing: 10) {
+                            SkeletonBlock(height: 60, radius: 16)
+                            SkeletonBlock(height: 60, radius: 16)
+                        }
                     }
                 }
-            }
-            .padding(16)
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                if vm.isBooked {
-                    Text("Tap a free reformer to switch spots.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.secondaryText)
-                }
+            } else {
                 ReformerPickerView(
                     stations: store.stations,
                     stateFor: { vm.tileState(for: $0) },
                     onTap: { station in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.65)) { vm.toggle(station) }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { vm.toggle(station) }
                     }
                 )
             }
@@ -178,18 +256,49 @@ struct ClassDetailView: View {
     @ViewBuilder
     private var contextLine: some View {
         if let policy, vm.mode == .bookable || vm.isBooked || vm.mode == .full {
-            let inside = policy.isInsideWindow()
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: inside ? "clock" : "calendar")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(inside ? Theme.caramel : Theme.secondaryText)
+                Image(systemName: policy.isInsideWindow() ? "clock" : "calendar")
+                    .font(.system(size: 14, weight: .light))
+                    .foregroundStyle(Theme.secondaryText)
                 Text(policy.contextLine())
-                    .font(.subheadline)
+                    .font(Typo.secondary)
                     .foregroundStyle(Theme.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.horizontal, 4)
         }
+    }
+
+    @ViewBuilder
+    private func aboutSection(_ session: ScheduleSession) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if let description = store.description(forClassType: session.classTypeId) {
+                Hairline()
+                SectionHeader(text: "What to Expect")
+                Text(description)
+                    .font(Typo.body)
+                    .lineSpacing(4)
+                    .foregroundStyle(Theme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Hairline()
+            HStack(spacing: 0) {
+                factColumn("Duration", "\(session.durationMinutes) min")
+                Rectangle().fill(Theme.hairline).frame(width: 1, height: 40)
+                factColumn("Level", (session.classLevel?.isEmpty == false ? session.classLevel : nil) ?? "All levels")
+            }
+        }
+    }
+
+    private func factColumn(_ label: String, _ value: String) -> some View {
+        VStack(spacing: 6) {
+            EyebrowText(label, size: 11)
+            Text(value)
+                .font(Typo.font(17, .regular, relativeTo: .body))
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
     }
 
     private var cancelMessage: String {
@@ -202,6 +311,40 @@ struct ClassDetailView: View {
         return "You're cancelling before \(policy.deadlineText), so your credit will be refunded."
     }
 
+    // MARK: Calendar
+
+    private func addToCalendar(_ session: ScheduleSession) {
+        let number = vm.isBooked ? store.stationNumber(for: vm.myStationId) : nil
+        Task {
+            do {
+                let outcome = try await CalendarService.addClass(
+                    title: session.name,
+                    start: session.startDate,
+                    end: session.endDate,
+                    reformerNumber: number
+                )
+                if outcome == .added {
+                    calendarAdded += 1
+                    flashNote("Added to your calendar")
+                } else if let url = URL(string: UIApplication.openSettingsURLString) {
+                    flashNote("Turn on calendar access in Settings")
+                    try? await Task.sleep(for: .seconds(1.2))
+                    openURL(url)
+                }
+            } catch {
+                flashNote("Couldn't add it just now — try again")
+            }
+        }
+    }
+
+    private func flashNote(_ text: String) {
+        calendarNote = text
+        Task {
+            try? await Task.sleep(for: .seconds(2.4))
+            if calendarNote == text { calendarNote = nil }
+        }
+    }
+
     // MARK: Action bar
 
     private var selectedNumber: Int? {
@@ -209,32 +352,37 @@ struct ClassDetailView: View {
         return store.stationNumber(for: id)
     }
 
+    private var spotsSuffix: String {
+        guard let session = vm.session else { return "" }
+        return " · \(session.spotsLeft) left"
+    }
+
     private var actionBar: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 4) {
             switch vm.mode {
             case .bookable:
                 primaryButton(
-                    title: selectedNumber.map { "Book Reformer \($0)" } ?? "Choose a reformer",
+                    title: (selectedNumber.map { "Reserve Reformer \($0)" } ?? "Choose a reformer") + spotsSuffix,
                     enabled: selectedNumber != nil
                 ) {
                     Task { await vm.book(store: store) }
                 }
             case .booked:
                 primaryButton(
-                    title: selectedNumber.map { "Move to Reformer \($0)" } ?? "Change reformer",
+                    title: selectedNumber.map { "Move to Reformer \($0)" } ?? "Change Reformer",
                     enabled: selectedNumber != nil
                 ) {
                     Task { await vm.changeReformer(store: store) }
                 }
                 Button("Cancel booking") { isConfirmingCancel = true }
-                    .buttonStyle(PillButtonStyle(kind: .secondary))
+                    .buttonStyle(QuietButtonStyle())
                     .disabled(vm.isWorking)
             case .full:
-                primaryButton(title: "Join waitlist", enabled: true) {
+                primaryButton(title: "Join Waitlist", enabled: true) {
                     Task { await vm.joinWaitlist(store: store) }
                 }
             case .waitlisted:
-                Button("Leave waitlist") {
+                Button("Leave Waitlist") {
                     Task { await vm.leaveWaitlist(store: store) }
                 }
                 .buttonStyle(PillButtonStyle(kind: .secondary))
@@ -251,9 +399,12 @@ struct ClassDetailView: View {
                 EmptyView()
             }
         }
+        .frame(maxWidth: Theme.readableWidth)
         .padding(.horizontal, 20)
         .padding(.top, 14)
-        .padding(.bottom, 8)
+        .padding(.bottom, 6)
+        .padding(.trailing, isEmbedded ? 72 : 0)
+        .frame(maxWidth: .infinity)
         .background {
             LinearGradient(
                 colors: [Theme.background.opacity(0), Theme.background, Theme.background],
@@ -268,7 +419,7 @@ struct ClassDetailView: View {
     private func primaryButton(title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             if vm.isWorking {
-                ProgressView().tint(Theme.onPink)
+                ProgressView().tint(Theme.primaryLabel)
             } else {
                 Text(title).contentTransition(.numericText())
             }
@@ -279,11 +430,11 @@ struct ClassDetailView: View {
 
     private var loadingSkeleton: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SkeletonBlock(width: 240, height: 38)
-            SkeletonBlock(width: 200, height: 20)
+            SkeletonBlock(width: 140, height: 12)
+            SkeletonBlock(width: 240, height: 34)
+            SkeletonBlock(width: 200, height: 28)
             SkeletonBlock(width: 160, height: 16)
-            SkeletonBlock(width: 100, height: 26, radius: 13)
-            SkeletonBlock(height: 360, radius: Theme.cardRadius)
+            SkeletonBlock(height: 300, radius: Theme.cardRadius)
                 .padding(.top, 8)
         }
     }

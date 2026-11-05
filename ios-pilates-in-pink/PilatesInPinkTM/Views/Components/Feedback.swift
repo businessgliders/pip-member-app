@@ -12,24 +12,29 @@ struct SkeletonBlock: View {
             .fill(Theme.taken)
             .frame(width: width, height: height)
             .opacity(isPulsing ? 0.45 : 1)
-            .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: isPulsing)
+            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
             .accessibilityHidden(true)
     }
 }
 
-struct ClassCardSkeleton: View {
+/// Skeleton matching a class/reservation row.
+struct RowSkeleton: View {
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
-            SkeletonBlock(width: 78, height: 22)
-            VStack(alignment: .leading, spacing: 10) {
-                SkeletonBlock(width: 150, height: 18)
-                SkeletonBlock(width: 70, height: 22, radius: 11)
-                SkeletonBlock(width: 120, height: 14)
+            VStack(alignment: .leading, spacing: 6) {
+                SkeletonBlock(width: 56, height: 14)
+                SkeletonBlock(width: 40, height: 11)
+            }
+            .frame(width: 64, alignment: .leading)
+            VStack(alignment: .leading, spacing: 8) {
+                SkeletonBlock(width: 170, height: 15)
+                SkeletonBlock(width: 120, height: 12)
             }
             Spacer()
         }
-        .cardStyle()
+        .padding(.vertical, 16)
+        .padding(.horizontal, 18)
     }
 }
 
@@ -41,18 +46,18 @@ struct ErrorCard: View {
     var onDismiss: (() -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Theme.caramel)
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(Theme.ink)
                     .frame(width: 28)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(error.title)
-                        .font(.headline)
+                        .font(Typo.font(16, .medium, relativeTo: .headline))
                         .foregroundStyle(Theme.ink)
                     Text(error.message)
-                        .font(.subheadline)
+                        .font(Typo.secondary)
                         .foregroundStyle(Theme.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -60,7 +65,7 @@ struct ErrorCard: View {
                 if let onDismiss {
                     Button(action: onDismiss) {
                         Image(systemName: "xmark")
-                            .font(.footnote.weight(.bold))
+                            .font(.system(size: 12, weight: .regular))
                             .foregroundStyle(Theme.secondaryText)
                             .frame(width: 32, height: 32)
                     }
@@ -68,17 +73,15 @@ struct ErrorCard: View {
                 }
             }
             if error.kind == .outOfCredits {
-                Button {} label: {
-                    Label("Buy credits — coming soon", systemImage: "sparkles")
-                }
-                .buttonStyle(PillButtonStyle(kind: .secondary))
-                .disabled(true)
+                Button {} label: { Text("Buy credits — coming soon") }
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+                    .disabled(true)
             } else if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(PillButtonStyle(kind: .secondary))
             }
         }
-        .cardStyle(padding: 16)
+        .cardStyle(padding: 18)
     }
 
     private var icon: String {
@@ -91,7 +94,7 @@ struct ErrorCard: View {
     }
 }
 
-/// Friendly empty state.
+/// Calm empty state with a line icon.
 struct EmptyStateCard: View {
     let systemImage: String
     let title: String
@@ -100,28 +103,28 @@ struct EmptyStateCard: View {
     var action: (() -> Void)? = nil
 
     var body: some View {
-        VStack(spacing: 14) {
-            ZStack {
-                Circle().fill(Theme.blush).frame(width: 72, height: 72)
-                Image(systemName: systemImage)
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-            }
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 30, weight: .ultraLight))
+                .foregroundStyle(Theme.ink)
+                .frame(height: 44)
             Text(title)
-                .font(.title3.weight(.bold))
+                .font(Typo.font(20, .light, relativeTo: .title3))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)
             Text(message)
-                .font(.subheadline)
+                .font(Typo.secondary)
                 .foregroundStyle(Theme.secondaryText)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
-                    .buttonStyle(PillButtonStyle(kind: .secondary))
-                    .padding(.top, 4)
+                    .buttonStyle(PillButtonStyle())
+                    .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
         .cardStyle(padding: 24)
     }
 }
@@ -132,16 +135,18 @@ struct ToastView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Theme.success)
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.onPink)
+                .frame(width: 22, height: 22)
+                .background(Theme.pink, in: Circle())
             Text(text)
-                .font(.subheadline.weight(.semibold))
+                .font(Typo.font(15, .regular, relativeTo: .subheadline))
                 .foregroundStyle(Theme.ink)
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 12)
-        .background(Theme.card, in: Capsule())
-        .shadow(color: Color.black.opacity(0.1), radius: 20, x: 0, y: 8)
+        .glass(Capsule())
         .padding(.horizontal, 20)
     }
 }

@@ -1,6 +1,44 @@
 import Foundation
 import Observation
 
+enum TimeOfDay: String, CaseIterable, Hashable {
+    case morning = "Morning", afternoon = "Afternoon", evening = "Evening"
+
+    static func of(_ date: Date) -> TimeOfDay {
+        let hour = StudioTime.calendar.component(.hour, from: date)
+        if hour < 12 { return .morning }
+        if hour < 17 { return .afternoon }
+        return .evening
+    }
+}
+
+/// Client-side filters over `get_schedule` results.
+struct ClassFilters: Equatable {
+    var families: Set<ClassFamily> = []
+    var instructors: Set<String> = []
+    var levels: Set<String> = []
+    var times: Set<TimeOfDay> = []
+
+    var count: Int { families.count + instructors.count + levels.count + times.count }
+    var isEmpty: Bool { count == 0 }
+
+    func matches(_ s: ScheduleSession) -> Bool {
+        if !families.isEmpty, !(s.family.map { families.contains($0) } ?? false) { return false }
+        if !instructors.isEmpty, !instructors.contains(s.instructorName ?? "") { return false }
+        if !levels.isEmpty, !levels.contains(s.classLevel ?? "") { return false }
+        if !times.isEmpty, !times.contains(TimeOfDay.of(s.startDate)) { return false }
+        return true
+    }
+
+    /// Short labels for the active chips row.
+    var labels: [String] {
+        families.map(\.displayName).sorted()
+            + instructors.sorted()
+            + levels.sorted()
+            + TimeOfDay.allCases.filter { times.contains($0) }.map(\.rawValue)
+    }
+}
+
 @Observable
 final class ScheduleViewModel {
     private(set) var weekStartDay: Int = 0
@@ -10,6 +48,7 @@ final class ScheduleViewModel {
     private(set) var sessions: [ScheduleSession] = []
     private(set) var loadedWeek: Date?
     private(set) var error: FriendlyError?
+    var filters = ClassFilters()
 
     private var requestID = 0
     private let service = StudioService()
@@ -27,10 +66,31 @@ final class ScheduleViewModel {
     var canGoForward: Bool { StudioTime.addDays(7, to: weekStart) <= lastBookableDay }
     var isShowingSkeleton: Bool { loadedWeek != weekStart }
 
+    /// "November 2026"
+    var monthTitle: String { StudioTime.format(selectedDay, "MMMM yyyy") }
+
     var sessionsForSelectedDay: [ScheduleSession] {
         sessions
             .filter { StudioTime.isSameDay($0.startDate, selectedDay) }
             .sorted { $0.startDate < $1.startDate }
+    }
+
+    var filteredSessionsForSelectedDay: [ScheduleSession] {
+        sessionsForSelectedDay.filter { filters.matches($0) }
+    }
+
+    // Options shown in the filter sheet (from what's loaded, plus current selections).
+    var familyOptions: [ClassFamily] {
+        let present = Set(sessions.compactMap(\.family)).union(filters.families)
+        return ClassFamily.allCases.filter { present.contains($0) || present.isEmpty }
+    }
+
+    var instructorOptions: [String] {
+        Set(sessions.compactMap { $0.instructorName }.filter { !$0.isEmpty }).union(filters.instructors).sorted()
+    }
+
+    var levelOptions: [String] {
+        Set(sessions.compactMap { $0.classLevel }.filter { !$0.isEmpty }).union(filters.levels).sorted()
     }
 
     func isSelectable(_ day: Date) -> Bool {

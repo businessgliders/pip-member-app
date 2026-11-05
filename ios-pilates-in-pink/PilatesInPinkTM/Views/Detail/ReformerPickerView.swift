@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Mirrors the real room: instructor at the front, reformers placed by row/column.
+/// Mirrors the real room: front of room at the top, reformers placed by row/column.
 struct ReformerPickerView: View {
     let stations: [Station]
     let stateFor: (Station) -> ReformerTileState
@@ -16,23 +16,12 @@ struct ReformerPickerView: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                ZStack {
-                    Circle().fill(Theme.softPink).frame(width: 30, height: 30)
-                    Image(systemName: "figure.pilates")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                }
-                Text("Front of room")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.secondaryText)
-            }
-            .padding(.bottom, 4)
-            .accessibilityElement(children: .combine)
+        VStack(spacing: 10) {
+            frontOfRoom
+                .padding(.bottom, 6)
 
             ForEach(rows, id: \.self) { row in
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     ForEach(columns, id: \.self) { column in
                         if let station = stations.first(where: { $0.row == row && $0.column == column }) {
                             ReformerTile(station: station, state: stateFor(station)) {
@@ -41,19 +30,48 @@ struct ReformerPickerView: View {
                         } else {
                             Color.clear
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 72)
+                                .frame(height: 60)
                         }
                     }
                 }
             }
+
+            legend
+                .padding(.top, 8)
         }
-        .padding(16)
+    }
+
+    private var frontOfRoom: some View {
+        VStack(spacing: 8) {
+            Capsule()
+                .fill(Theme.ink.opacity(0.85))
+                .frame(width: 120, height: 3)
+            EyebrowText("Front of room", size: 11)
+        }
         .frame(maxWidth: .infinity)
-        .background(Theme.card.opacity(0.7), in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                .strokeBorder(Theme.hairline.opacity(0.6), lineWidth: 1)
-        )
+        .accessibilityElement(children: .combine)
+    }
+
+    private var legend: some View {
+        HStack(spacing: 18) {
+            legendItem(fill: Theme.card, stroke: Theme.hairline, text: "Open")
+            legendItem(fill: Theme.pink, stroke: .clear, text: "Selected")
+            legendItem(fill: Theme.taken, stroke: .clear, text: "Taken")
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityHidden(true)
+    }
+
+    private func legendItem(fill: Color, stroke: Color, text: String) -> some View {
+        HStack(spacing: 6) {
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(fill)
+                .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(stroke, lineWidth: 1))
+                .frame(width: 14, height: 14)
+            Text(text)
+                .font(Typo.font(12, .regular, relativeTo: .caption))
+                .foregroundStyle(Theme.secondaryText)
+        }
     }
 }
 
@@ -64,37 +82,27 @@ struct ReformerTile: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 14) {
+            HStack(spacing: 12) {
                 ReformerIcon()
-                    .stroke(iconColor, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
-                    .frame(width: 50, height: 25)
+                    .stroke(iconColor, style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
+                    .frame(width: 40, height: 20)
                 Text("\(station.number)")
-                    .font(.title3.weight(.semibold))
+                    .font(Typo.font(20, state == .selected || state == .mine ? .medium : .light, relativeTo: .title3))
                     .monospacedDigit()
                     .foregroundStyle(numberColor)
+                    .strikethrough(state == .taken || state == .outOfService, color: Theme.secondaryText.opacity(0.6))
                 if state == .mine {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.body.weight(.semibold))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.onPink)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 72)
+            .frame(height: 60)
             .background(background)
             .overlay(border)
-            .overlay {
-                if state == .outOfService {
-                    GeometryReader { geo in
-                        Path { p in
-                            p.move(to: CGPoint(x: 18, y: geo.size.height - 14))
-                            p.addLine(to: CGPoint(x: geo.size.width - 18, y: 14))
-                        }
-                        .stroke(Theme.secondaryText.opacity(0.5), lineWidth: 1.5)
-                    }
-                }
-            }
-            .scaleEffect(state == .selected ? 1.03 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: state)
+            .scaleEffect(state == .selected ? 1.02 : 1)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: state)
         }
         .buttonStyle(PressableCardStyle())
         .disabled(!isInteractive)
@@ -106,34 +114,29 @@ struct ReformerTile: View {
         state == .available || state == .selected
     }
 
+    private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
+
     @ViewBuilder
     private var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         switch state {
-        case .selected, .mine:
-            shape.fill(Theme.pink).shadow(color: Theme.pink.opacity(0.4), radius: 10, x: 0, y: 5)
-        case .taken, .outOfService:
-            shape.fill(Theme.taken)
-        case .available, .locked:
-            shape.fill(Theme.card).shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        case .selected, .mine: shape.fill(Theme.pink)
+        case .taken, .outOfService: shape.fill(Theme.taken)
+        case .available, .locked: shape.fill(Theme.card)
         }
     }
 
     @ViewBuilder
     private var border: some View {
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         switch state {
-        case .available, .locked:
-            shape.strokeBorder(Theme.hairline, lineWidth: 1)
-        default:
-            EmptyView()
+        case .available, .locked: shape.strokeBorder(Theme.hairline, lineWidth: 1)
+        default: EmptyView()
         }
     }
 
     private var iconColor: Color {
         switch state {
         case .selected, .mine: Theme.onPink
-        case .taken, .outOfService: Theme.secondaryText.opacity(0.5)
+        case .taken, .outOfService: Theme.secondaryText.opacity(0.4)
         case .available, .locked: Theme.secondaryText
         }
     }

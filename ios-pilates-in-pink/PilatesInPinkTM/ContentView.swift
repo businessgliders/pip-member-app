@@ -30,20 +30,18 @@ struct SplashView: View {
 
     var body: some View {
         ZStack {
-            ScreenBackground()
-            VStack(spacing: 20) {
-                BrandMark(size: 112)
-                    .shadow(color: Theme.pink.opacity(0.28), radius: 24, x: 0, y: 10)
-                VStack(spacing: 6) {
+            Theme.background.ignoresSafeArea()
+            VStack(spacing: 18) {
+                BrandMark(size: 96)
+                VStack(spacing: 8) {
                     Text("Pilates in Pink™")
-                        .font(.title2.weight(.heavy))
-                        .tracking(-0.4)
+                        .font(Typo.font(26, .light, relativeTo: .title))
                         .foregroundStyle(Theme.ink)
-                    Text("STUDIO")
-                        .font(.footnote.weight(.bold))
-                        .tracking(7)
-                        .foregroundStyle(Theme.caramel)
-                        .offset(x: 3.5) // optically recenter letterspaced caps
+                    Text("BRAMPTON")
+                        .font(Typo.font(11, .medium, relativeTo: .caption2))
+                        .tracking(3)
+                        .foregroundStyle(Theme.secondaryText)
+                        .offset(x: 1.5)
                 }
             }
             .opacity(hasAppeared ? 1 : 0)

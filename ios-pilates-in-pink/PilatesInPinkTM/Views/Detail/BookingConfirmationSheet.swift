@@ -8,94 +8,103 @@ struct BookingConfirmationSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var calendarState: CalendarState = .idle
-    @State private var hasAppeared: Bool = false
-    @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 34
-
-    private let sparkles: [(x: CGFloat, y: CGFloat, size: CGFloat, delay: Double)] = [
-        (-110, -30, 18, 0.05), (-80, 34, 12, 0.15), (-130, 18, 10, 0.25),
-        (110, -26, 16, 0.1), (84, 38, 12, 0.2), (132, 10, 9, 0.3)
-    ]
+    @State private var hasAppeared = false
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: 0) {
             ZStack {
-                ForEach(Array(sparkles.enumerated()), id: \.offset) { _, sparkle in
-                    Image(systemName: "sparkle")
-                        .font(.system(size: sparkle.size, weight: .bold))
-                        .foregroundStyle(Theme.pink.opacity(0.7))
-                        .offset(x: sparkle.x, y: sparkle.y)
-                        .scaleEffect(hasAppeared ? 1 : 0.1)
-                        .opacity(hasAppeared ? 1 : 0)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.5).delay(sparkle.delay), value: hasAppeared)
-                }
                 Circle()
-                    .fill(Theme.softPink.opacity(0.55))
-                    .frame(width: 112, height: 112)
+                    .fill(Theme.blush)
+                    .frame(width: 84, height: 84)
                     .scaleEffect(hasAppeared ? 1 : 0.6)
-                Image(systemName: "calendar.badge.checkmark")
-                    .font(.system(size: 46, weight: .semibold))
-                    .foregroundStyle(Theme.ink)
-                    .symbolEffect(.bounce, value: hasAppeared)
+                Circle()
+                    .fill(Theme.pink)
+                    .frame(width: 52, height: 52)
+                    .scaleEffect(hasAppeared ? 1 : 0.3)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 20, weight: .medium))
+                    .foregroundStyle(Theme.onPink)
+                    .opacity(hasAppeared ? 1 : 0)
             }
-            .frame(height: 130)
-            .padding(.top, 8)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .padding(.bottom, 22)
             .accessibilityHidden(true)
 
-            Text("You're booked ✨")
-                .font(.system(size: titleSize, weight: .heavy))
-                .tracking(-1)
+            Text("You're booked")
+                .font(Typo.font(34, .light, relativeTo: .largeTitle))
                 .foregroundStyle(Theme.ink)
-                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+                .padding(.bottom, 20)
 
-            Text(confirmation.summary)
-                .font(.body.weight(.medium))
-                .monospacedDigit()
-                .foregroundStyle(Theme.secondaryText)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 0) {
+                detailRow("Class", confirmation.className)
+                Hairline()
+                detailRow("Date", StudioTime.format(confirmation.start, "EEEE, MMM d"))
+                Hairline()
+                detailRow("Time", StudioTime.timeRange(confirmation.start, confirmation.end))
+                Hairline()
+                detailRow("Reformer", "\(confirmation.reformerNumber)")
+            }
+            .padding(.horizontal, 18)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
 
             if calendarState == .denied {
-                Text("Calendar access is off. You can turn it on in Settings.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
+                note("Calendar access is off. You can turn it on in Settings.")
             } else if calendarState == .failed {
-                Text("We couldn't add it just now — give it another try.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.secondaryText)
-                    .multilineTextAlignment(.center)
+                note("We couldn't add it just now — give it another try.")
             }
 
-            Spacer(minLength: 8)
+            Spacer(minLength: 16)
 
-            calendarButton
-
-            Button("Done") { dismiss() }
-                .buttonStyle(PillButtonStyle(kind: .secondary))
+            VStack(spacing: 10) {
+                calendarButton
+                Button("Done") { dismiss() }
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+            }
         }
         .padding(.horizontal, 24)
         .padding(.top, 20)
         .padding(.bottom, 12)
-        .presentationDetents([.height(500), .large])
+        .presentationDetents([.height(600), .large])
         .presentationDragIndicator(.visible)
-        .presentationCornerRadius(34)
-        .presentationBackground {
-            LinearGradient(colors: [Theme.blush, Theme.background], startPoint: .top, endPoint: .bottom)
-        }
+        .presentationCornerRadius(Theme.sheetRadius)
+        .presentationBackground(Theme.background)
         .sensoryFeedback(.success, trigger: calendarState == .added)
         .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.6)) { hasAppeared = true }
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.7).delay(0.1)) { hasAppeared = true }
         }
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            EyebrowText(label)
+            Spacer()
+            Text(value)
+                .font(Typo.body)
+                .monospacedDigit()
+                .foregroundStyle(Theme.ink)
+                .multilineTextAlignment(.trailing)
+        }
+        .frame(minHeight: 50)
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .font(Typo.secondary)
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
+            .padding(.top, 14)
     }
 
     @ViewBuilder
     private var calendarButton: some View {
         switch calendarState {
         case .added:
-            Button {} label: {
-                Label("Added to your calendar", systemImage: "checkmark")
-            }
-            .buttonStyle(PillButtonStyle())
-            .disabled(true)
+            Button {} label: { Label("Added to Calendar", systemImage: "checkmark") }
+                .buttonStyle(PillButtonStyle())
+                .disabled(true)
         case .denied:
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
@@ -104,7 +113,7 @@ struct BookingConfirmationSheet: View {
         default:
             Button(action: addToCalendar) {
                 if calendarState == .adding {
-                    ProgressView().tint(Theme.onPink)
+                    ProgressView().tint(Theme.primaryLabel)
                 } else {
                     Text("Add to Calendar")
                 }

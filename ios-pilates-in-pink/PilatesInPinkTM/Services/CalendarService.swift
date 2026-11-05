@@ -5,13 +5,13 @@ import Foundation
 enum CalendarService {
     enum Outcome { case added, denied }
 
-    static func addClass(title: String, start: Date, end: Date, reformerNumber: Int) async throws -> Outcome {
+    static func addClass(title: String, start: Date, end: Date, reformerNumber: Int?) async throws -> Outcome {
         let store = EKEventStore()
         let granted = try await store.requestWriteOnlyAccessToEvents()
         guard granted else { return .denied }
 
         let event = EKEvent(eventStore: store)
-        event.title = "\(title) · Reformer \(reformerNumber)"
+        event.title = reformerNumber.map { "\(title) · Reformer \($0)" } ?? title
         event.startDate = start
         event.endDate = end
         event.location = "Pilates in Pink™, Brampton, ON"
