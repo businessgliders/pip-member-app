@@ -24,7 +24,10 @@ struct HeroSlide: Identifiable {
 }
 
 /// Full-bleed photo carousel with page dots; auto-advances gently.
+/// On the iPhone Duo inner display (`fold` set), the photo sits in the left pane and the words
+/// in the right, so neither the photo's subject nor any text lands on the fold.
 struct HeroCarousel: View {
+    var fold: ClosedRange<CGFloat>? = nil
     let onAction: (HeroSlide.Action) -> Void
     @State private var index = 0
     @State private var lastInteraction = Date()
@@ -37,7 +40,11 @@ struct HeroCarousel: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
-        .overlay(alignment: .bottom) { dots.padding(.bottom, Theme.sheetRadius + 14) }
+        .overlay(alignment: fold == nil ? .bottom : .bottomTrailing) {
+            dots
+                .padding(.bottom, Theme.sheetRadius + 14)
+                .padding(.trailing, fold == nil ? 0 : 24)
+        }
         .onChange(of: index) { _, _ in lastInteraction = Date() }
         .task {
             while !Task.isCancelled {
@@ -50,47 +57,73 @@ struct HeroCarousel: View {
         .sensoryFeedback(.selection, trigger: index)
     }
 
+    @ViewBuilder
     private func slideView(_ slide: HeroSlide) -> some View {
-        ZStack(alignment: .bottomLeading) {
-            StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
-            LinearGradient(
-                colors: [Color.black.opacity(0.35), .clear, Color.black.opacity(0.15), Color.black.opacity(0.62)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            VStack(alignment: .leading, spacing: 10) {
-                Text(slide.headline)
-                    .font(Typo.font(38, .light, relativeTo: .largeTitle))
-                    .tracking(-0.6)
-                    .foregroundStyle(.white)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityAddTraits(.isHeader)
-                Text(slide.subtitle)
-                    .font(Typo.font(16, .regular, relativeTo: .body))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .fixedSize(horizontal: false, vertical: true)
-                Button { onAction(slide.action) } label: {
-                    HStack(spacing: 8) {
-                        Text(slide.button.uppercased())
-                            .font(Typo.font(12, .medium, relativeTo: .caption))
-                            .tracking(1.6)
-                        Image(systemName: "arrow.right")
-                            .font(.system(size: 11, weight: .medium))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 18)
-                    .frame(height: 44)
-                    .contentShape(Capsule())
+        if let fold {
+            ZStack(alignment: .topLeading) {
+                StudioPhoto(name: slide.image, tone: .deep)
+                    .blur(radius: 28)
+                    .overlay(Color.black.opacity(0.42))
+                HStack(spacing: 0) {
+                    StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
+                        .frame(width: fold.lowerBound)
+                        .overlay {
+                            LinearGradient(colors: [Color.black.opacity(0.3), .clear], startPoint: .top, endPoint: .center)
+                        }
+                        .clipped()
+                    Color.clear.frame(width: fold.upperBound - fold.lowerBound)
+                    slideText(slide)
+                        .padding(.leading, 8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 }
-                .buttonStyle(PressableCardStyle())
-                .glass(Capsule(), dark: true, interactive: true)
-                .padding(.top, 8)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, Theme.sheetRadius + 44)
-            .frame(maxWidth: 560, alignment: .leading)
+            .clipped()
+        } else {
+            ZStack(alignment: .bottomLeading) {
+                StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
+                LinearGradient(
+                    colors: [Color.black.opacity(0.35), .clear, Color.black.opacity(0.15), Color.black.opacity(0.62)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                slideText(slide)
+                    .frame(maxWidth: 560, alignment: .leading)
+            }
+            .clipped()
         }
-        .clipped()
+    }
+
+    private func slideText(_ slide: HeroSlide) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(slide.headline)
+                .font(Typo.font(38, .light, relativeTo: .largeTitle))
+                .tracking(-0.6)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            Text(slide.subtitle)
+                .font(Typo.font(16, .regular, relativeTo: .body))
+                .foregroundStyle(.white.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+            Button { onAction(slide.action) } label: {
+                HStack(spacing: 8) {
+                    Text(slide.button.uppercased())
+                        .font(Typo.font(12, .medium, relativeTo: .caption))
+                        .tracking(1.6)
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 18)
+                .frame(height: 44)
+                .contentShape(Capsule())
+            }
+            .buttonStyle(PressableCardStyle())
+            .glass(Capsule(), dark: true, interactive: true)
+            .padding(.top, 8)
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, Theme.sheetRadius + 44)
     }
 
     private var dots: some View {

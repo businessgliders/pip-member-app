@@ -7,11 +7,14 @@ struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var hSize
 
     @State private var topInset: CGFloat = 0
+    @State private var fold = FoldInfo()
+
+    private var isRegular: Bool { hSize == .regular }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                HeroCarousel(onAction: handle)
+                HeroCarousel(fold: fold.verticalFold(), onAction: handle)
                     .containerRelativeFrame(.vertical) { height, _ in max(420, height * 0.55) }
                     .overlay(alignment: .top) { topBar }
 
@@ -21,7 +24,7 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .ignoresSafeArea(.container, edges: .top)
-        .floatingNavClearance()
+        .readFold(into: $fold)
         .background {
             GeometryReader { proxy in
                 Color.clear
@@ -55,7 +58,7 @@ struct HomeView: View {
             .buttonStyle(PressableCardStyle())
             .accessibilityLabel("Your profile")
 
-            Spacer()
+            if fold.verticalFold() == nil { Spacer() }
 
             HStack(spacing: 6) {
                 Image(systemName: "location")
@@ -78,18 +81,40 @@ struct HomeView: View {
             }
         }
         .padding(.horizontal, 16)
-        .padding(.trailing, hSize == .regular ? 76 : 0)
-        .padding(.top, topInset + 6)
+        .padding(.top, topBarTop)
+    }
+
+    /// Below the status bar, and below any camera cut-out that reaches into the bar.
+    private var topBarTop: CGFloat {
+        let camera = fold.occlusions
+            .filter { $0.minY < topInset + 56 }
+            .map(\.maxY)
+            .max() ?? 0
+        return max(topInset, camera) + 6
     }
 
     // MARK: Cream sheet
 
     private var sheet: some View {
         VStack(alignment: .leading, spacing: 28) {
-            VStack(alignment: .leading, spacing: 14) {
-                SectionHeader(text: "Up Next")
-                reservationsCard
-                creditsRow
+            if isRegular {
+                FoldColumns {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(text: "Up Next")
+                        reservationsCard
+                    }
+                } trailing: {
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(text: "Credits")
+                        creditsRow
+                    }
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 14) {
+                    SectionHeader(text: "Up Next")
+                    reservationsCard
+                    creditsRow
+                }
             }
             VStack(alignment: .leading, spacing: 14) {
                 SectionHeader(text: "At the Studio")
@@ -98,9 +123,8 @@ struct HomeView: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 30)
-        .padding(.bottom, 12)
-        .readableWidth(hSize == .regular ? 980 : Theme.readableWidth)
-        .padding(.trailing, hSize == .regular ? 76 : 0)
+        .padding(.bottom, 24)
+        .readableWidth(isRegular ? 1100 : Theme.readableWidth)
         .background(
             Theme.background,
             in: UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous)
@@ -224,11 +248,32 @@ struct HomeView: View {
         .buttonStyle(PressableCardStyle())
     }
 
+    @ViewBuilder
     private var studioTiles: some View {
-        let count = hSize == .regular ? 4 : 2
+        if isRegular {
+            FoldReader { info in
+                if info.verticalFold() != nil {
+                    // Two tiles per side, with the gap on the fold.
+                    let families = ClassFamily.allCases
+                    let half = (families.count + 1) / 2
+                    FoldColumns {
+                        tileGrid(Array(families.prefix(half)), columns: 2)
+                    } trailing: {
+                        tileGrid(Array(families.dropFirst(half)), columns: 2)
+                    }
+                } else {
+                    tileGrid(Array(ClassFamily.allCases), columns: info.width >= 760 ? 4 : 3)
+                }
+            }
+        } else {
+            tileGrid(Array(ClassFamily.allCases), columns: 2)
+        }
+    }
+
+    private func tileGrid(_ families: [ClassFamily], columns count: Int) -> some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: Theme.gap), count: count)
         return LazyVGrid(columns: columns, spacing: Theme.gap) {
-            ForEach(ClassFamily.allCases) { family in
+            ForEach(families) { family in
                 Button { router.openClasses(family: family) } label: {
                     StudioPhoto(name: family.imageName)
                         .aspectRatio(1, contentMode: .fit)

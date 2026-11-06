@@ -13,36 +13,64 @@ struct MemberCardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                ScreenTitle(text: segment.rawValue)
-                    .contentTransition(.opacity)
+            FoldReader { info in
+                if let fold = info.verticalFold() {
+                    // iPhone Duo inner display: words on the left, the card on the right; never across the fold.
+                    FoldColumns {
+                        VStack(alignment: .leading, spacing: 22) {
+                            ScreenTitle(text: segment.rawValue)
+                                .contentTransition(.opacity)
+                            segmentPicker
+                            if segment == .card { hint }
+                        }
+                        .padding(.leading, 20)
+                    } trailing: {
+                        segmentContent
+                            .frame(maxWidth: min(420, max(0, info.width - fold.upperBound - 40)))
+                            .frame(maxWidth: .infinity)
+                            .padding(.trailing, 20)
+                    }
                     .padding(.top, 12)
-
-                segmentPicker
-
-                if segment == .card {
-                    card
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                    Text("Show this at the front desk when you arrive.")
-                        .font(Typo.secondary)
-                        .foregroundStyle(Theme.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .multilineTextAlignment(.center)
                 } else {
-                    guestPasses
-                        .transition(.opacity)
+                    VStack(alignment: .leading, spacing: 22) {
+                        ScreenTitle(text: segment.rawValue)
+                            .contentTransition(.opacity)
+                            .padding(.top, 12)
+                        segmentPicker
+                        segmentContent
+                        if segment == .card { hint }
+                    }
+                    .padding(.horizontal, 20)
+                    .readableWidth(460)
                 }
             }
-            .padding(.horizontal, 20)
-            .readableWidth(520)
+            .padding(.bottom, 24)
             .animation(Theme.spring, value: segment)
         }
         .scrollIndicators(.hidden)
-        .floatingNavClearance()
         .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.selection, trigger: segment)
         .task { if !store.hasLoadedCredits { await store.refreshCredits() } }
+    }
+
+    @ViewBuilder
+    private var segmentContent: some View {
+        if segment == .card {
+            card
+                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+        } else {
+            guestPasses
+                .transition(.opacity)
+        }
+    }
+
+    private var hint: some View {
+        Text("Show this at the front desk when you arrive.")
+            .font(Typo.secondary)
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity)
+            .multilineTextAlignment(.center)
     }
 
     private var segmentPicker: some View {

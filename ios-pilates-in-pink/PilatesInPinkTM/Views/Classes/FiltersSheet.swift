@@ -9,25 +9,34 @@ struct FiltersSheet: View {
     @State private var expanded: Set<String> = ["Class"]
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Button("Clear") {
-                    withAnimation(Theme.spring) { draft = ClassFilters() }
+        NavigationStack {
+            content
+                .navigationTitle("Filters")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            withAnimation(Theme.spring) { draft = ClassFilters() }
+                        } label: {
+                            Label("Clear", systemImage: "arrow.counterclockwise")
+                        }
+                        .disabled(draft.isEmpty)
+                    }
                 }
-                .buttonStyle(QuietButtonStyle())
-                .disabled(draft.isEmpty)
-                .opacity(draft.isEmpty ? 0.4 : 1)
-                Spacer()
-                Text("Filters")
-                    .font(Typo.font(17, .medium, relativeTo: .headline))
-                    .foregroundStyle(Theme.ink)
-                Spacer()
-                GlassCircleButton(systemImage: "xmark", label: "Close") { dismiss() }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 18)
-            .padding(.bottom, 8)
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(Theme.sheetRadius)
+        .presentationBackground(Theme.background)
+        .sensoryFeedback(.selection, trigger: draft)
+        .onAppear { draft = vm.filters }
+    }
 
+    private var content: some View {
+        VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 0) {
                     group("Class", options: vm.familyOptions.map { ($0.displayName, $0.rawValue) },
@@ -67,12 +76,7 @@ struct FiltersSheet: View {
             .padding(.bottom, 12)
         }
         .background(Theme.background)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(Theme.sheetRadius)
-        .presentationBackground(Theme.background)
-        .sensoryFeedback(.selection, trigger: draft)
-        .onAppear { draft = vm.filters }
+        .avoidingFold()
     }
 
     private func group(

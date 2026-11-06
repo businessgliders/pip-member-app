@@ -70,6 +70,7 @@ struct WelcomeView: View {
             .padding(.bottom, Theme.sheetRadius + 26)
             .frame(maxWidth: Theme.readableWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .avoidingFold()
         }
         .frame(height: height + topInset)
         .clipped()
@@ -106,6 +107,7 @@ struct WelcomeView: View {
         .padding(.bottom, 40)
         .frame(maxWidth: 520)
         .frame(maxWidth: .infinity)
+        .avoidingFold()
         .background(
             Theme.background,
             in: UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous)

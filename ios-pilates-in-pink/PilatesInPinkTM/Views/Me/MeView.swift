@@ -9,38 +9,54 @@ struct MeView: View {
     @State private var studioSheet: StudioInfoSheet.Section?
     @State private var isShowingGuestNote = false
 
+    @Environment(\.horizontalSizeClass) private var hSize
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: Theme.gap) {
-                HStack {
-                    Spacer()
-                    GlassCircleButton(systemImage: "gearshape", label: "Account settings") {
-                        router.mePath.append(.account)
+            Group {
+                if hSize == .regular {
+                    // Two columns; on iPhone Duo the gap sits on the fold.
+                    FoldColumns {
+                        VStack(alignment: .leading, spacing: Theme.gap) {
+                            profile.padding(.bottom, 16)
+                            studioCard
+                        }
+                    } trailing: {
+                        VStack(alignment: .leading, spacing: Theme.gap) {
+                            visitsCard
+                            menu.padding(.top, 12)
+                            footer
+                        }
                     }
+                    .readableWidth(1100)
+                } else {
+                    VStack(alignment: .leading, spacing: Theme.gap) {
+                        profile
+                            .padding(.bottom, 16)
+                        studioCard
+                        visitsCard
+                        menu
+                            .padding(.top, 12)
+                        footer
+                    }
+                    .readableWidth()
                 }
-                .padding(.top, 8)
-
-                profile
-                    .padding(.bottom, 16)
-
-                studioCard
-                visitsCard
-                menu
-                    .padding(.top, 12)
-
-                Text("Pilates in Pink™ · Brampton, Ontario")
-                    .font(Typo.font(13, .regular, relativeTo: .footnote))
-                    .foregroundStyle(Theme.secondaryText)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 18)
             }
             .padding(.horizontal, 20)
-            .readableWidth()
+            .padding(.bottom, 24)
         }
         .scrollIndicators(.hidden)
-        .floatingNavClearance()
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { router.mePath.append(.account) } label: {
+                    Label("Account settings", systemImage: "gearshape")
+                }
+            }
+        }
         .refreshable { await store.refreshAll() }
         .task { if !store.hasLoadedCredits { await store.refreshCredits() } }
         .sheet(item: $studioSheet) { section in
@@ -55,6 +71,14 @@ struct MeView: View {
         } message: {
             Text("For now, bring your friend along and let the front desk know when you arrive.")
         }
+    }
+
+    private var footer: some View {
+        Text("Pilates in Pink™ · Brampton, Ontario")
+            .font(Typo.font(13, .regular, relativeTo: .footnote))
+            .foregroundStyle(Theme.secondaryText)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 18)
     }
 
     // MARK: Profile

@@ -1,6 +1,28 @@
 import Foundation
 import Observation
 
+/// Keeps the detail model for recently opened classes, so the chosen reformer and any
+/// open confirmation survive a layout change (fold, unfold, rotation).
+enum ClassDetailModels {
+    private static var models: [ClassRoute: ClassDetailViewModel] = [:]
+    private static var order: [ClassRoute] = []
+
+    static func model(for route: ClassRoute) -> ClassDetailViewModel {
+        if let existing = models[route] {
+            order.removeAll { $0 == route }
+            order.append(route)
+            return existing
+        }
+        let model = ClassDetailViewModel(route: route)
+        models[route] = model
+        order.append(route)
+        while order.count > 8 {
+            models[order.removeFirst()] = nil
+        }
+        return model
+    }
+}
+
 enum ReformerTileState: Equatable {
     case available, selected, taken, mine, outOfService, locked
 }

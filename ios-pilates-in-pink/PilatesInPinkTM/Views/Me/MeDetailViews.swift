@@ -54,11 +54,12 @@ struct ReservationsView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
             .readableWidth()
+            .avoidingFold()
             .animation(Theme.softSpring, value: store.upcomingBookings)
         }
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .pushedScreenChrome()
         .refreshable { await store.refreshBookings() }
         .task { await store.loadStationsIfNeeded() }
     }
@@ -127,10 +128,11 @@ struct CreditsView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
             .readableWidth()
+            .avoidingFold()
         }
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .pushedScreenChrome()
         .refreshable { await store.refreshCredits() }
         .task { await store.refreshCredits() }
     }
@@ -180,10 +182,11 @@ struct AccountDetailsView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
             .readableWidth()
+            .avoidingFold()
         }
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .pushedScreenChrome()
         .confirmationDialog("Sign out of Pilates in Pink™?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
             Button("Stay signed in", role: .cancel) {}
@@ -241,9 +244,10 @@ struct NotificationsView: View {
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
             .readableWidth()
+            .avoidingFold()
         }
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .pushedScreenChrome()
     }
 }

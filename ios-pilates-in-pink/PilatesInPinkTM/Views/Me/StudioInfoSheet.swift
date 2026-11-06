@@ -8,12 +8,26 @@ struct StudioInfoSheet: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
+        NavigationStack {
+            content
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbarBackground(.hidden, for: .navigationBar)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button { dismiss() } label: { Label("Close", systemImage: "xmark") }
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(Theme.sheetRadius)
+        .presentationBackground(Theme.background)
+    }
+
+    private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
-                HStack {
-                    Spacer()
-                    GlassCircleButton(systemImage: "xmark", label: "Close") { dismiss() }
-                }
                 StudioPhoto(name: "studio_brampton")
                     .frame(height: 160)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
@@ -28,15 +42,12 @@ struct StudioInfoSheet: View {
                 }
             }
             .padding(.horizontal, 22)
-            .padding(.top, 16)
+            .padding(.top, 4)
             .padding(.bottom, 30)
+            .avoidingFold()
         }
         .scrollIndicators(.hidden)
         .background(Theme.background)
-        .presentationDetents([.large])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(Theme.sheetRadius)
-        .presentationBackground(Theme.background)
     }
 
     private var details: some View {

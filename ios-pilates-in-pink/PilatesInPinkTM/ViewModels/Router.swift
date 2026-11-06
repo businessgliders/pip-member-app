@@ -43,15 +43,9 @@ final class Router {
     private(set) var pendingClassFilter: ClassFamily?
     private(set) var pendingFilterToken = 0
 
-    /// The floating nav only shows on top-level screens.
-    var isNavVisible: Bool {
-        switch selectedTab {
-        case .home: homePath.isEmpty
-        case .classes: classesPath.isEmpty
-        case .card: cardPath.isEmpty
-        case .me: mePath.isEmpty
-        }
-    }
+    /// The class open in the Classes tab. Shared by the pushed (compact) and
+    /// split (regular) layouts so it survives folds and rotations.
+    var classesSelection: ClassRoute?
 
     func select(_ tab: AppTab) {
         if tab == selectedTab {
@@ -64,7 +58,9 @@ final class Router {
     func popToRoot(_ tab: AppTab) {
         switch tab {
         case .home: homePath = []
-        case .classes: classesPath = []
+        case .classes:
+            classesPath = []
+            classesSelection = nil
         case .card: cardPath = []
         case .me: mePath = []
         }
@@ -77,6 +73,7 @@ final class Router {
             pendingFilterToken += 1
         }
         classesPath = []
+        classesSelection = nil
         selectedTab = .classes
     }
 

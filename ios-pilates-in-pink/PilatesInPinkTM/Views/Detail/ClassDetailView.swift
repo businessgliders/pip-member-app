@@ -8,10 +8,12 @@ struct ClassDetailView: View {
     @State private var isConfirmingCancel = false
     @State private var calendarNote: String?
     @State private var calendarAdded = 0
+    @State private var isWide = false
+    @Environment(\.horizontalSizeClass) private var hSize
     let isEmbedded: Bool
 
     init(route: ClassRoute, isEmbedded: Bool = false) {
-        _vm = State(initialValue: ClassDetailViewModel(route: route))
+        _vm = State(initialValue: ClassDetailModels.model(for: route))
         self.isEmbedded = isEmbedded
     }
 
@@ -21,60 +23,23 @@ struct ClassDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                hero
-                VStack(alignment: .leading, spacing: 22) {
-                    if let session = vm.session {
-                        header(session)
-                        if let error = vm.actionError {
-                            ErrorCard(error: error, onDismiss: {
-                                withAnimation(Theme.spring) { vm.actionError = nil }
-                            })
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                        Hairline()
-                        pickerSection
-                        contextLine
-                        aboutSection(session)
-                    } else if let error = vm.loadError {
-                        ErrorCard(error: error, actionTitle: "Try again") {
-                            Task { await vm.load(store: store) }
-                        }
-                    } else {
-                        loadingSkeleton
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.trailing, isEmbedded ? 76 : 0)
-                .padding(.top, 26)
-                .padding(.bottom, 28)
-                .frame(maxWidth: Theme.readableWidth)
-                .frame(maxWidth: .infinity)
-                .background(Theme.background)
-                .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous))
-                .padding(.top, -Theme.sheetRadius)
-                .animation(Theme.spring, value: vm.actionError)
+        Group {
+            if usesTwoPanes {
+                twoPaneLayout
+            } else {
+                singleColumn
             }
         }
-        .scrollIndicators(.hidden)
-        .ignoresSafeArea(.container, edges: .top)
         .background(Theme.background.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
-            if vm.session != nil { actionBar }
-        }
-        .overlay(alignment: .top) { topButtons }
-        .overlay(alignment: .top) {
-            if let toast = vm.toast ?? calendarNote {
-                ToastView(text: toast)
-                    .padding(.top, 60)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
+        .onGeometryChange(for: Bool.self) { proxy in
+            proxy.size.width > proxy.size.height * 1.1
+        } action: { isWide = $0 }
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar { detailToolbar }
         .animation(Theme.spring, value: vm.toast)
         .animation(Theme.spring, value: calendarNote)
-        .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await vm.load(store: store) }
         .task {
             await vm.load(store: store)
             await store.loadClassTypesIfNeeded()
@@ -99,14 +64,169 @@ struct ClassDetailView: View {
         .sensoryFeedback(.success, trigger: calendarAdded)
     }
 
+    /// Hero + details beside the picker when the screen is wide (iPad, iPhone Duo inner display
+    /// held landscape, large iPhones in landscape). The split-view detail column stays one column.
+    private var usesTwoPanes: Bool {
+        !isEmbedded && hSize == .regular && isWide
+    }
+
+    // MARK: Layouts
+
+    private var singleColumn: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                hero(fraction: 0.4)
+                sheetSurface {
+                    if let session = vm.session {
+                        header(session)
+                        actionErrorCard
+                        Hairline()
+                        pickerSection
+                        contextLine
+                        aboutSection(session)
+                    } else {
+                        loadingOrError
+                    }
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .ignoresSafeArea(.container, edges: .top)
+        .refreshable { await vm.load(store: store) }
+        .safeAreaInset(edge: .bottom) {
+            if vm.session != nil { actionBar }
+        }
+        .overlay(alignment: .top) { toastOverlay }
+    }
+
+    @ViewBuilder
+    private var twoPaneLayout: some View {
+#if canImport(SwiftUI, _version: 8.0.85)
+        if #available(iOS 27.1, *) {
+            ArrangementView {
+                infoPane
+            } secondary: {
+                bookingPane
+            }
+            .arrangementViewStyle(.split)
+        } else {
+            twoPaneFallback
+        }
+#else
+        twoPaneFallback
+#endif
+    }
+
+    private var twoPaneFallback: some View {
+        HStack(spacing: 0) {
+            infoPane.frame(maxWidth: .infinity)
+            Rectangle().fill(Theme.hairline).frame(width: 1).ignoresSafeArea()
+            bookingPane.frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Left pane: photo, class details and what to expect.
+    private var infoPane: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                hero(fraction: 0.5)
+                sheetSurface {
+                    if let session = vm.session {
+                        header(session)
+                        aboutSection(session)
+                    } else {
+                        loadingOrError
+                    }
+                }
+            }
+        }
+        .scrollIndicators(.hidden)
+        .ignoresSafeArea(.container, edges: .top)
+        .refreshable { await vm.load(store: store) }
+        .background(Theme.background.ignoresSafeArea())
+    }
+
+    /// Right pane: reformer picker with the booking button pinned below.
+    private var bookingPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                if vm.session != nil {
+                    actionErrorCard
+                    pickerSection
+                    contextLine
+                } else {
+                    SkeletonBlock(height: 300, radius: Theme.cardRadius)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+            .frame(maxWidth: Theme.readableWidth)
+            .frame(maxWidth: .infinity)
+            .animation(Theme.spring, value: vm.actionError)
+        }
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            if vm.session != nil { actionBar }
+        }
+        .overlay(alignment: .top) { toastOverlay }
+        .background(Theme.background.ignoresSafeArea())
+    }
+
+    private func sheetSurface<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 22) {
+            content()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 26)
+        .padding(.bottom, 28)
+        .frame(maxWidth: Theme.readableWidth)
+        .frame(maxWidth: .infinity)
+        .background(Theme.background)
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous))
+        .padding(.top, -Theme.sheetRadius)
+        .animation(Theme.spring, value: vm.actionError)
+    }
+
+    @ViewBuilder
+    private var actionErrorCard: some View {
+        if let error = vm.actionError {
+            ErrorCard(error: error, onDismiss: {
+                withAnimation(Theme.spring) { vm.actionError = nil }
+            })
+            .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var loadingOrError: some View {
+        if let error = vm.loadError {
+            ErrorCard(error: error, actionTitle: "Try again") {
+                Task { await vm.load(store: store) }
+            }
+        } else {
+            loadingSkeleton
+        }
+    }
+
+    @ViewBuilder
+    private var toastOverlay: some View {
+        if let toast = vm.toast ?? calendarNote {
+            ToastView(text: toast)
+                .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .top).combined(with: .opacity))
+        }
+    }
+
     // MARK: Hero
 
-    private var hero: some View {
+    private func hero(fraction: CGFloat) -> some View {
         StudioPhoto(name: vm.session?.photoName ?? "studio_brampton", tone: .deep, fadeIn: true)
-            .containerRelativeFrame(.vertical) { height, _ in height * 0.4 }
+            .containerRelativeFrame(.vertical) { height, _ in height * fraction }
             .frame(maxWidth: .infinity)
             .overlay {
-                LinearGradient(colors: [Color.black.opacity(0.28), .clear], startPoint: .top, endPoint: .center)
+                LinearGradient(colors: [Color.black.opacity(0.32), .clear], startPoint: .top, endPoint: .center)
             }
             .overlay(alignment: .bottomLeading) {
                 if let family = vm.session?.family {
@@ -118,29 +238,24 @@ struct ClassDetailView: View {
             .clipped()
     }
 
-    private var topButtons: some View {
-        HStack {
-            if !isEmbedded { GlassBackButton() }
-            Spacer()
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
             if let session = vm.session {
+                Button { addToCalendar(session) } label: {
+                    Label("Add to Calendar", systemImage: "calendar.badge.plus")
+                }
                 ShareLink(
                     item: StudioInfo.website ?? URL(string: "https://www.pilatesinpinkstudio.com")!,
                     subject: Text(session.name),
                     message: Text(shareMessage(session))
                 ) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
-                .glass(Circle(), interactive: true)
-                .accessibilityLabel("Share class")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.trailing, isEmbedded ? 76 : 0)
-        .padding(.top, 6)
     }
 
     private func shareMessage(_ session: ScheduleSession) -> String {
@@ -161,17 +276,6 @@ struct ClassDetailView: View {
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Spacer()
-                Button(action: { addToCalendar(session) }) {
-                    Image(systemName: "calendar.badge.plus")
-                        .font(.system(size: 17, weight: .light))
-                        .foregroundStyle(Theme.ink)
-                        .frame(width: 48, height: 48)
-                        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .buttonStyle(PressableCardStyle())
-                .glass(RoundedRectangle(cornerRadius: 14, style: .continuous), interactive: true)
-                .accessibilityLabel("Add to Calendar")
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -403,7 +507,6 @@ struct ClassDetailView: View {
         .padding(.horizontal, 20)
         .padding(.top, 14)
         .padding(.bottom, 6)
-        .padding(.trailing, isEmbedded ? 72 : 0)
         .frame(maxWidth: .infinity)
         .background {
             LinearGradient(

@@ -56,8 +56,7 @@ enum Theme {
     static let cardRadius: CGFloat = 20
     static let sheetRadius: CGFloat = 28
     static let gap: CGFloat = 12
-    static let readableWidth: CGFloat = 720
-    static let tabBarClearance: CGFloat = 112
+    static let readableWidth: CGFloat = 680
     static let spring: Animation = .spring(response: 0.45, dampingFraction: 0.85)
     static let softSpring: Animation = .spring(response: 0.6, dampingFraction: 0.9)
 }

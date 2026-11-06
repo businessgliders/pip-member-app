@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// Classes tab. Compact width: a stack that pushes the class. Regular width (iPad, iPhone Duo
+/// inner display): a split view with the list on the left and the class on the right.
+/// The schedule, selected day, scroll position and open class live here, above both layouts,
+/// so folding, unfolding and rotating keep them.
 struct ClassesView: View {
     @Environment(StudioStore.self) private var store
     @Environment(Router.self) private var router
@@ -7,26 +11,31 @@ struct ClassesView: View {
     @State private var vm = ScheduleViewModel()
     @State private var hasConfigured = false
     @State private var isShowingFilters = false
-    @State private var splitSelection: ClassRoute?
+    @State private var scrolledRow: ScheduleSession.ID?
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var fold = FoldInfo()
 
     private var isSplit: Bool { hSize == .regular }
 
     var body: some View {
+        @Bindable var router = router
         Group {
             if isSplit {
-                HStack(spacing: 0) {
-                    listColumn
-                        .frame(width: 400)
-                    Rectangle().fill(Theme.hairline).frame(width: 1).ignoresSafeArea()
+                NavigationSplitView(columnVisibility: $columnVisibility) {
+                    list
+                        .navigationSplitViewColumnWidth(min: 320, ideal: sidebarWidth, max: 560)
+                } detail: {
                     detailColumn
-                        .frame(maxWidth: .infinity)
                 }
+                .navigationSplitViewStyle(.balanced)
             } else {
-                listColumn
+                NavigationStack(path: $router.classesPath) {
+                    list.appDestinations()
+                }
             }
         }
         .background(Theme.background.ignoresSafeArea())
-        .toolbar(.hidden, for: .navigationBar)
+        .readFold(into: $fold)
         .sheet(isPresented: $isShowingFilters) {
             FiltersSheet(vm: vm) { draft in
                 vm.sessionsForSelectedDay.filter { draft.matches($0) }.count
@@ -41,6 +50,16 @@ struct ClassesView: View {
             applyPendingFilter()
             await vm.load()
         }
+        .onAppear { syncLayout(regular: isSplit) }
+        .onChange(of: hSize) { _, size in syncLayout(regular: size == .regular) }
+        .onChange(of: router.classesPath) { _, path in
+            guard !isSplit else { return }
+            if case .classDetail(let route)? = path.last {
+                router.classesSelection = route
+            } else {
+                router.classesSelection = nil
+            }
+        }
         .onChange(of: store.settings) { _, settings in
             vm.configure(with: settings)
             Task { await vm.load() }
@@ -51,8 +70,28 @@ struct ClassesView: View {
         .onChange(of: router.pendingFilterToken) { _, _ in
             applyPendingFilter()
         }
-        .onChange(of: vm.selectedDay) { _, _ in
-            if isSplit { splitSelection = nil }
+    }
+
+    /// The list column ends at the fold on iPhone Duo, so the column divider sits on it.
+    private var sidebarWidth: CGFloat {
+        if let fold = fold.verticalFold(margin: 300) { return fold.lowerBound }
+        return 380
+    }
+
+    /// Moves the open class between the pushed stack and the split detail column.
+    private func syncLayout(regular: Bool) {
+        if regular {
+            if case .classDetail(let route)? = router.classesPath.last {
+                router.classesSelection = route
+            }
+            if !router.classesPath.isEmpty { router.classesPath = [] }
+            columnVisibility = .all
+        } else if let route = router.classesSelection, router.classesPath.isEmpty {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                router.classesPath = [.classDetail(route)]
+            }
         }
     }
 
@@ -63,16 +102,11 @@ struct ClassesView: View {
 
     // MARK: List
 
-    private var listColumn: some View {
+    private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .center) {
-                    ScreenTitle(text: "Classes")
-                    Spacer()
-                    filtersButton
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                ScreenTitle(text: "Classes")
+                    .padding(.horizontal, 20)
 
                 WeekStripView(vm: vm)
                     .padding(.horizontal, 12)
@@ -81,37 +115,37 @@ struct ClassesView: View {
                     activeFilters
                 }
 
-                list
+                rows
                     .animation(Theme.softSpring, value: vm.filteredSessionsForSelectedDay)
                     .animation(Theme.softSpring, value: vm.selectedDay)
             }
+            .padding(.bottom, 24)
             .readableWidth()
         }
+        .scrollPosition(id: $scrolledRow, anchor: .top)
         .scrollIndicators(.hidden)
-        .floatingNavClearance()
+        .background(Theme.background.ignoresSafeArea())
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { isShowingFilters = true } label: {
+                    Label("Filters", systemImage: vm.filters.isEmpty
+                          ? "line.3.horizontal.decrease"
+                          : "line.3.horizontal.decrease.circle.fill")
+                }
+                .accessibilityLabel(vm.filters.isEmpty ? "Filters" : "Filters, \(vm.filters.count) active")
+            }
+        }
         .refreshable {
             await vm.load()
             await store.refreshAll()
         }
-    }
-
-    private var filtersButton: some View {
-        Button { isShowingFilters = true } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 14, weight: .light))
-                Text(vm.filters.isEmpty ? "Filters" : "Filters (\(vm.filters.count))")
-                    .font(Typo.font(15, .regular, relativeTo: .subheadline))
-                    .monospacedDigit()
-            }
-            .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .contentShape(Capsule())
+        .onChange(of: vm.selectedDay) { _, _ in
+            scrolledRow = nil
+            if isSplit { router.classesSelection = nil }
         }
-        .buttonStyle(PressableCardStyle())
-        .glass(Capsule(), interactive: true)
-        .accessibilityLabel(vm.filters.isEmpty ? "Filters" : "Filters, \(vm.filters.count) active")
     }
 
     private var activeFilters: some View {
@@ -144,7 +178,7 @@ struct ClassesView: View {
     }
 
     @ViewBuilder
-    private var list: some View {
+    private var rows: some View {
         if vm.isShowingSkeleton && vm.sessions.isEmpty {
             VStack(spacing: 0) {
                 ForEach(0..<5, id: \.self) { _ in
@@ -164,18 +198,22 @@ struct ClassesView: View {
             VStack(spacing: 0) {
                 Hairline()
                 ForEach(vm.filteredSessionsForSelectedDay) { session in
-                    Button {
-                        open(session)
-                    } label: {
-                        ClassRowView(
-                            session: session,
-                            isHighlighted: isSplit && splitSelection?.sessionId == session.sessionId
-                        )
+                    VStack(spacing: 0) {
+                        Button {
+                            open(session)
+                        } label: {
+                            ClassRowView(
+                                session: session,
+                                isHighlighted: isSplit && router.classesSelection?.sessionId == session.sessionId
+                            )
+                        }
+                        .buttonStyle(PressableCardStyle())
+                        Hairline()
                     }
-                    .buttonStyle(PressableCardStyle())
-                    Hairline()
+                    .id(session.id)
                 }
             }
+            .scrollTargetLayout()
         }
     }
 
@@ -202,17 +240,18 @@ struct ClassesView: View {
     private func open(_ session: ScheduleSession) {
         let route = ClassRoute(sessionId: session.sessionId, startsAt: session.startDate)
         if isSplit {
-            withAnimation(Theme.spring) { splitSelection = route }
+            withAnimation(Theme.spring) { router.classesSelection = route }
         } else {
+            router.classesSelection = route
             router.classesPath.append(.classDetail(route))
         }
     }
 
-    // MARK: Detail column (iPad)
+    // MARK: Detail column
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let route = splitSelection {
+        if let route = router.classesSelection {
             ClassDetailView(route: route, isEmbedded: true)
                 .id(route)
                 .transition(.opacity)
@@ -228,8 +267,9 @@ struct ClassesView: View {
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 300)
             }
+            .padding(24)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.trailing, 84)
+            .background(Theme.background.ignoresSafeArea())
         }
     }
 }

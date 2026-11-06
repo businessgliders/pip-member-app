@@ -11,6 +11,37 @@ struct BookingConfirmationSheet: View {
     @State private var hasAppeared = false
 
     var body: some View {
+        ScrollView {
+            summary
+                .padding(.horizontal, 24)
+                .padding(.top, 20)
+                .padding(.bottom, 12)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.hidden)
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: 10) {
+                calendarButton
+                Button("Done") { dismiss() }
+                    .buttonStyle(PillButtonStyle(kind: .secondary))
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .background(Theme.background)
+        }
+        .avoidingFold()
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationCornerRadius(Theme.sheetRadius)
+        .presentationBackground(Theme.background)
+        .sensoryFeedback(.success, trigger: calendarState == .added)
+        .onAppear {
+            withAnimation(.spring(response: 0.55, dampingFraction: 0.7).delay(0.1)) { hasAppeared = true }
+        }
+    }
+
+    private var summary: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
                 Circle()
@@ -55,24 +86,6 @@ struct BookingConfirmationSheet: View {
                 note("We couldn't add it just now — give it another try.")
             }
 
-            Spacer(minLength: 16)
-
-            VStack(spacing: 10) {
-                calendarButton
-                Button("Done") { dismiss() }
-                    .buttonStyle(PillButtonStyle(kind: .secondary))
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.top, 20)
-        .padding(.bottom, 12)
-        .presentationDetents([.height(600), .large])
-        .presentationDragIndicator(.visible)
-        .presentationCornerRadius(Theme.sheetRadius)
-        .presentationBackground(Theme.background)
-        .sensoryFeedback(.success, trigger: calendarState == .added)
-        .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.7).delay(0.1)) { hasAppeared = true }
         }
     }
 
