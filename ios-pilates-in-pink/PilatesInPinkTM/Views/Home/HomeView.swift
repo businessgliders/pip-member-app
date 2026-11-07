@@ -68,7 +68,7 @@ struct HomeView: View {
         HStack(spacing: 10) {
             Button { router.openMe() } label: {
                 GlassCircle {
-                    Text(auth.initials)
+                    Text(auth.identity(with: store.profile).initials)
                         .font(Typo.font(15, .medium, relativeTo: .subheadline))
                         .foregroundStyle(Theme.ink)
                 }

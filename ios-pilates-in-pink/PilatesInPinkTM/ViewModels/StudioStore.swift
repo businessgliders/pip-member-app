@@ -7,6 +7,9 @@ final class StudioStore {
     private(set) var settings: StudioSettings?
     private(set) var stations: [Station] = []
     private(set) var credits: Credits?
+    /// The member's database profile (name + member id); nil until loaded.
+    private(set) var profile: MemberProfile?
+    private(set) var hasLoadedProfile = false
     private(set) var bookings: [Booking] = []
     private(set) var hasLoadedBookings = false
     private(set) var hasLoadedCredits = false
@@ -122,6 +125,21 @@ final class StudioStore {
         }
     }
 
+    /// Keeps the last good profile if the request fails.
+    func refreshProfile() async {
+        let service = self.service
+        let result = await captureResult { try await service.profile() }
+        switch result {
+        case .success(let value):
+            if let value { profile = value }
+        case .failure(let error):
+            if !FriendlyError.isCancellation(error) {
+                print("Profile load failed: \(error.localizedDescription)")
+            }
+        }
+        hasLoadedProfile = true
+    }
+
     func refreshCredits() async {
         let service = self.service
         let result = await captureResult { try await service.credits() }
@@ -155,6 +173,7 @@ final class StudioStore {
         async let settingsResult = captureResult { try await service.settings() }
         async let stationsResult = captureResult { try await service.stations() }
         async let creditsResult = captureResult { try await service.credits() }
+        async let profileResult = captureResult { try await service.profile() }
         async let bookingsResult = captureResult { try await service.bookings() }
 
         if case .success(let value) = await settingsResult { settings = value }
@@ -168,6 +187,16 @@ final class StudioStore {
             if !FriendlyError.isCancellation(error) { creditsError = FriendlyError.from(error) }
         }
         hasLoadedCredits = true
+
+        switch await profileResult {
+        case .success(let value):
+            if let value { profile = value }
+        case .failure(let error):
+            if !FriendlyError.isCancellation(error) {
+                print("Profile load failed: \(error.localizedDescription)")
+            }
+        }
+        hasLoadedProfile = true
 
         switch await bookingsResult {
         case .success(let value):

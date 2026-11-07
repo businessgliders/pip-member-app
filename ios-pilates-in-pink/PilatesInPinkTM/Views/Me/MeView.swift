@@ -58,7 +58,10 @@ struct MeView: View {
             }
         }
         .logoRefreshable { await store.refreshAll() }
-        .task { if !store.hasLoadedCredits { await store.refreshCredits() } }
+        .task {
+            if !store.hasLoadedCredits { await store.refreshCredits() }
+            if !store.hasLoadedProfile { await store.refreshProfile() }
+        }
         .sheet(item: $studioSheet) { section in
             StudioInfoSheet(initial: section)
         }
@@ -84,8 +87,9 @@ struct MeView: View {
     // MARK: Profile
 
     private var profile: some View {
-        VStack(spacing: 12) {
-            Text(auth.initials)
+        let member = auth.identity(with: store.profile)
+        return VStack(spacing: 12) {
+            Text(member.initials)
                 .font(Typo.font(36, .light, relativeTo: .largeTitle))
                 .foregroundStyle(Theme.onPink)
                 .frame(width: 104, height: 104)
@@ -94,7 +98,7 @@ struct MeView: View {
                     in: Circle()
                 )
                 .accessibilityHidden(true)
-            Text(auth.displayName)
+            Text(member.displayName)
                 .font(Typo.font(30, .light, relativeTo: .largeTitle))
                 .foregroundStyle(Theme.ink)
                 .multilineTextAlignment(.center)

@@ -60,6 +60,15 @@ nonisolated struct StudioService: Sendable {
         return try decode(Credits.self, from: response.data)
     }
 
+    /// The signed-in member's profile (one row).
+    func profile() async throws -> MemberProfile? {
+        let response = try await client.rpc("get_my_profile").execute()
+        if let rows = try? decode([MemberProfile].self, from: response.data) {
+            return rows.first
+        }
+        return try decode(MemberProfile.self, from: response.data)
+    }
+
     func bookings() async throws -> [Booking] {
         let response = try await client
             .from("bookings")

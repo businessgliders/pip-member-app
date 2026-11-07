@@ -154,6 +154,7 @@ struct CreditsView: View {
 
 struct AccountDetailsView: View {
     @Environment(AuthStore.self) private var auth
+    @Environment(StudioStore.self) private var store
     @State private var isConfirmingSignOut = false
 
     var body: some View {
@@ -161,12 +162,13 @@ struct AccountDetailsView: View {
             VStack(alignment: .leading, spacing: Theme.gap) {
                 PushedHeader(title: "Account")
                     .padding(.bottom, 8)
+                let member = auth.identity(with: store.profile)
                 VStack(spacing: 0) {
-                    row("First name", auth.firstName.isEmpty ? "—" : auth.firstName)
+                    row("First name", member.firstName.isEmpty ? "—" : member.firstName)
                     Hairline()
-                    row("Last name", auth.lastName.isEmpty ? "—" : auth.lastName)
+                    row("Last name", member.lastName.isEmpty ? "—" : member.lastName)
                     Hairline()
-                    row("Email", auth.email)
+                    row("Email", member.email.isEmpty ? "—" : member.email)
                     Hairline()
                     row("Studio", "\(StudioInfo.name) · \(StudioInfo.city)")
                 }

@@ -52,7 +52,10 @@ struct MemberCardView: View {
         .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
         .sensoryFeedback(.selection, trigger: segment)
-        .task { if !store.hasLoadedCredits { await store.refreshCredits() } }
+        .task {
+            if !store.hasLoadedCredits { await store.refreshCredits() }
+            if store.profile == nil { await store.refreshProfile() }
+        }
     }
 
     @ViewBuilder
@@ -102,6 +105,8 @@ struct MemberCardView: View {
         .background(Theme.blush, in: Capsule())
     }
 
+    private var member: MemberIdentity { auth.identity(with: store.profile) }
+
     private var card: some View {
         VStack(spacing: 0) {
             HStack {
@@ -120,7 +125,7 @@ struct MemberCardView: View {
                 qr
                     .padding(.top, 26)
                 VStack(spacing: 8) {
-                    Text(auth.firstName.isEmpty ? auth.displayName : auth.firstName)
+                    Text(member.shortName)
                         .font(Typo.font(28, .light, relativeTo: .title))
                         .foregroundStyle(Theme.fixedInk)
                     Text(store.credits?.memberLabel ?? (store.hasLoadedCredits ? "NO ACTIVE MEMBERSHIP" : " "))
@@ -142,12 +147,13 @@ struct MemberCardView: View {
         .riseIn(hasAppeared)
         .onAppear { withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { hasAppeared = true } }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Member card for \(auth.displayName)")
+        .accessibilityLabel("Member card for \(member.displayName)")
     }
 
     @ViewBuilder
     private var qr: some View {
-        if let id = auth.userId?.uuidString,
+        // The front desk scans the member's profile id (not the sign-in account id).
+        if let id = store.profile?.profileId, !id.isEmpty,
            let image = QRCode.image(for: id, foreground: UIColor(hex: 0x1A1418), background: UIColor(hex: 0xF6EEE7)) {
             Image(uiImage: image)
                 .interpolation(.none)
@@ -155,6 +161,22 @@ struct MemberCardView: View {
                 .scaledToFit()
                 .frame(width: 200, height: 200)
                 .accessibilityLabel("Member QR code")
+        } else if store.hasLoadedProfile {
+            Button {
+                Task { await store.refreshProfile() }
+            } label: {
+                VStack(spacing: 8) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 20, weight: .light))
+                    Text("Couldn't load your member code.\nTap to try again.")
+                        .font(Typo.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .foregroundStyle(Theme.fixedInk.opacity(0.7))
+                .frame(width: 200, height: 200)
+                .background(Theme.fixedInk.opacity(0.05), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
         } else {
             SkeletonBlock(width: 200, height: 200, radius: 12)
         }

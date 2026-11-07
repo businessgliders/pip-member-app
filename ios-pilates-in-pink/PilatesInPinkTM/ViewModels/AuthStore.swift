@@ -48,6 +48,11 @@ final class AuthStore {
         return String(letters).uppercased()
     }
 
+    /// Name to show: the database profile first, then auth metadata, then the email's local part.
+    func identity(with profile: MemberProfile?) -> MemberIdentity {
+        MemberIdentity(profile: profile, metadataFirst: firstName, metadataLast: lastName, authEmail: email)
+    }
+
     private func metadataString(_ key: String) -> String? {
         guard let value = user?.userMetadata[key] else { return nil }
         if case let .string(text) = value { return text }
