@@ -1,12 +1,16 @@
 import SwiftUI
 
-/// Full-width schedule row: time + duration | hairline | name, instructor · level, status.
+/// Full-width schedule row: photo | time + duration | hairline | name, instructor · level, status.
 struct ClassRowView: View {
     let session: ScheduleSession
     var isHighlighted: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
+            StudioPhoto(name: session.photoName)
+                .frame(width: 64, height: 64)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
             VStack(alignment: .leading, spacing: 3) {
                 Text(StudioTime.time(session.startDate))
                     .font(Typo.font(15, .medium, relativeTo: .subheadline))

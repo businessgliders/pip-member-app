@@ -1,20 +1,28 @@
 import SwiftUI
 import UIKit
 
-/// A studio photo from the asset catalog. Until a real photo is dropped into the slot,
-/// draws a warm blush-to-cream gradient with soft grain so screens still feel finished.
+/// A studio photo from the asset catalog. Tries `name`, then each of `fallbacks`; if none
+/// exists, draws a warm blush-to-cream gradient with soft grain so screens still feel finished.
+/// `alignment` decides which part of an aspect-filled photo stays in view (`.top` keeps faces
+/// and raised arms).
 struct StudioPhoto: View {
     enum Tone { case light, deep }
 
     let name: String
+    var fallbacks: [String] = []
+    var alignment: Alignment = .center
     var tone: Tone = .light
     var fadeIn: Bool = false
     @State private var isVisible = false
 
+    private var image: UIImage? {
+        ([name] + fallbacks).lazy.compactMap { UIImage(named: $0) }.first
+    }
+
     var body: some View {
         Color.clear
-            .overlay {
-                if let image = UIImage(named: name) {
+            .overlay(alignment: alignment) {
+                if let image {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()

@@ -106,7 +106,9 @@ final class ClassDetailViewModel {
 
     func load(store: StudioStore) async {
         await store.loadSettingsIfNeeded()
-        await store.loadStationsIfNeeded()
+        // Always re-read the room (alongside the class) so layout changes in the database
+        // show up on open and on pull to refresh.
+        let stationsRefresh = Task { await store.refreshStations() }
 
         let service = self.service
         let dayStart = StudioTime.startOfDay(route.startsAt)
@@ -116,6 +118,7 @@ final class ClassDetailViewModel {
         async let scheduleResult = captureResult { try await service.schedule(from: dayStart, to: dayEnd) }
         async let takenResult = captureResult { try await service.takenStations(sessionId: sessionId) }
         let (sessions, takenRows) = await (scheduleResult, takenResult)
+        await stationsRefresh.value
 
         switch sessions {
         case .success(let rows):

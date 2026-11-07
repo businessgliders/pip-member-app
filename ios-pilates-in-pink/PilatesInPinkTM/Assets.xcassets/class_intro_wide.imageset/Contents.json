@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "class_intro_wide.jpg",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

@@ -1,6 +1,8 @@
 import SwiftUI
 
-/// Mirrors the real room: front of room at the top, reformers placed by row/column.
+/// Mirrors the real room: front of room at the top, reformers placed by the row/column stored
+/// in the database (nothing is hard-coded). Tiles right of the centre line mirror their icon
+/// so every footbar faces the centre aisle.
 struct ReformerPickerView: View {
     let stations: [Station]
     let stateFor: (Station) -> ReformerTileState
@@ -15,6 +17,11 @@ struct ReformerPickerView: View {
         return Array(1...max(maxColumn, 1))
     }
 
+    /// The centre aisle, in column units.
+    private var centreLine: Double {
+        Double((columns.first ?? 1) + (columns.last ?? 1)) / 2
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             frontOfRoom
@@ -24,7 +31,11 @@ struct ReformerPickerView: View {
                 HStack(spacing: 10) {
                     ForEach(columns, id: \.self) { column in
                         if let station = stations.first(where: { $0.row == row && $0.column == column }) {
-                            ReformerTile(station: station, state: stateFor(station)) {
+                            ReformerTile(
+                                station: station,
+                                state: stateFor(station),
+                                isMirrored: Double(column) > centreLine
+                            ) {
                                 onTap(station)
                             }
                         } else {
@@ -78,6 +89,8 @@ struct ReformerPickerView: View {
 struct ReformerTile: View {
     let station: Station
     let state: ReformerTileState
+    /// Right of the aisle: the footbar points left, toward the centre.
+    var isMirrored: Bool = false
     let action: () -> Void
     @Environment(\.calmMotion) private var calm
 
@@ -89,6 +102,7 @@ struct ReformerTile: View {
                 ReformerIcon()
                     .stroke(iconColor, style: StrokeStyle(lineWidth: 1.2, lineCap: .round, lineJoin: .round))
                     .frame(width: 40, height: 20)
+                    .scaleEffect(x: isMirrored ? -1 : 1, y: 1)
                 Text("\(station.number)")
                     .font(Typo.font(20, state == .selected || state == .mine ? .medium : .light, relativeTo: .title3))
                     .monospacedDigit()

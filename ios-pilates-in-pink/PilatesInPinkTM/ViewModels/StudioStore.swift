@@ -111,6 +111,17 @@ final class StudioStore {
         }
     }
 
+    /// Re-reads the room layout (row/column come from the database), keeping the current
+    /// layout if the request fails.
+    func refreshStations() async {
+        do {
+            let value = try await service.stations()
+            if value != stations { stations = value }
+        } catch {
+            print("Stations refresh failed: \(error.localizedDescription)")
+        }
+    }
+
     func refreshCredits() async {
         let service = self.service
         let result = await captureResult { try await service.credits() }

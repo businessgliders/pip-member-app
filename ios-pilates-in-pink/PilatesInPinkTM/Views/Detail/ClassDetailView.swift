@@ -9,6 +9,10 @@ struct ClassDetailView: View {
     @State private var calendarNote: String?
     @State private var calendarAdded = 0
     @State private var isWide = false
+    /// Where the inline actions sit inside the visible scroll area, and how much of the
+    /// bottom is covered (tab bar), so a new selection can scroll the button into view.
+    @State private var actionsFrame: CGRect = .zero
+    @State private var scrollMetrics = ScrollMetrics()
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(\.calmMotion) private var calm
     let isEmbedded: Bool
@@ -75,31 +79,44 @@ struct ClassDetailView: View {
     // MARK: Layouts
 
     private var singleColumn: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                hero(fraction: 0.4)
-                sheetSurface {
-                    if let session = vm.session {
-                        header(session)
-                        actionErrorCard
-                        Hairline()
-                        pickerSection
-                        contextLine
-                        aboutSection(session)
-                    } else {
-                        loadingOrError
+        ScrollViewReader { reader in
+            ScrollView {
+                VStack(spacing: 0) {
+                    hero(fraction: 0.4)
+                    sheetSurface {
+                        if let session = vm.session {
+                            header(session)
+                            actionErrorCard
+                            Hairline()
+                            pickerSection
+                            contextLine
+                            inlineActions
+                            aboutSection(session)
+                        } else {
+                            loadingOrError
+                        }
                     }
                 }
+                .padding(.bottom, Self.tabBarClearance)
             }
+            .scrollIndicators(.hidden)
+            .ignoresSafeArea(.container, edges: .top)
+            .refreshable { await vm.load(store: store) }
+            .modifier(RevealActionsOnSelect(
+                selection: vm.selectedStationId,
+                actionsFrame: actionsFrame,
+                metrics: $scrollMetrics,
+                calm: calm,
+                reader: reader
+            ))
+            .overlay(alignment: .top) { toastOverlay }
         }
-        .scrollIndicators(.hidden)
-        .ignoresSafeArea(.container, edges: .top)
-        .refreshable { await vm.load(store: store) }
-        .safeAreaInset(edge: .bottom) {
-            if vm.session != nil { actionBar }
-        }
-        .overlay(alignment: .top) { toastOverlay }
     }
+
+    /// Extra room below the content so the last reformer row and the button always scroll
+    /// fully clear of the floating tab bar (on top of the system's own safe-area inset).
+    static let tabBarClearance: CGFloat = 40
+    fileprivate static let actionsID = "detail-actions"
 
     @ViewBuilder
     private var twoPaneLayout: some View {
@@ -148,31 +165,38 @@ struct ClassDetailView: View {
         .background(Theme.background.ignoresSafeArea())
     }
 
-    /// Right pane: reformer picker with the booking button pinned below.
+    /// Right pane: reformer picker with the booking actions inline below it.
     private var bookingPane: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                if vm.session != nil {
-                    actionErrorCard
-                    pickerSection
-                    contextLine
-                } else {
-                    SkeletonBlock(height: 300, radius: Theme.cardRadius)
+        ScrollViewReader { reader in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    if vm.session != nil {
+                        actionErrorCard
+                        pickerSection
+                        contextLine
+                        inlineActions
+                    } else {
+                        SkeletonBlock(height: 300, radius: Theme.cardRadius)
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 24 + Self.tabBarClearance)
+                .frame(maxWidth: Theme.readableWidth)
+                .frame(maxWidth: .infinity)
+                .animation(Motion.choose(Motion.ease, calm: calm), value: vm.actionError)
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 12)
-            .padding(.bottom, 24)
-            .frame(maxWidth: Theme.readableWidth)
-            .frame(maxWidth: .infinity)
-            .animation(Motion.choose(Motion.ease, calm: calm), value: vm.actionError)
+            .scrollIndicators(.hidden)
+            .modifier(RevealActionsOnSelect(
+                selection: vm.selectedStationId,
+                actionsFrame: actionsFrame,
+                metrics: $scrollMetrics,
+                calm: calm,
+                reader: reader
+            ))
+            .overlay(alignment: .top) { toastOverlay }
+            .background(Theme.background.ignoresSafeArea())
         }
-        .scrollIndicators(.hidden)
-        .safeAreaInset(edge: .bottom) {
-            if vm.session != nil { actionBar }
-        }
-        .overlay(alignment: .top) { toastOverlay }
-        .background(Theme.background.ignoresSafeArea())
     }
 
     private func sheetSurface<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
@@ -224,7 +248,15 @@ struct ClassDetailView: View {
     // MARK: Hero
 
     private func hero(fraction: CGFloat) -> some View {
-        StudioPhoto(name: vm.session?.photoName ?? "studio_brampton", tone: .deep, fadeIn: true)
+        // Wide photo, top-aligned so faces and raised arms stay in frame;
+        // falls back to the square photo, then the gradient.
+        StudioPhoto(
+            name: vm.session?.widePhotoName ?? "studio_brampton",
+            fallbacks: vm.session.map { [$0.photoName] } ?? [],
+            alignment: .top,
+            tone: .deep,
+            fadeIn: true
+        )
             .containerRelativeFrame(.vertical) { height, _ in height * fraction }
             .frame(maxWidth: .infinity)
             .overlay {
@@ -451,33 +483,33 @@ struct ClassDetailView: View {
         }
     }
 
-    // MARK: Action bar
+    // MARK: Inline actions
 
     private var selectedNumber: Int? {
         guard let id = vm.selectedStationId else { return nil }
         return store.stationNumber(for: id)
     }
 
-    private var spotsSuffix: String {
-        guard let session = vm.session else { return "" }
-        return " · \(session.spotsLeft) left"
-    }
-
-    private var actionBar: some View {
+    /// Sits in the flow directly under the legend and cancellation line — nothing floats
+    /// over the reformer grid.
+    private var inlineActions: some View {
         VStack(spacing: 4) {
             switch vm.mode {
             case .bookable:
-                primaryButton(
-                    title: (selectedNumber.map { "Reserve Reformer \($0)" } ?? "Choose a reformer") + spotsSuffix,
-                    enabled: selectedNumber != nil
-                ) {
-                    Task { await vm.book(store: store) }
+                if let number = selectedNumber {
+                    primaryButton(title: "Reserve Reformer \(number)", number: number, enabled: true) {
+                        Task { await vm.book(store: store) }
+                    }
+                    .transition(Motion.rise(calm: calm))
+                } else {
+                    Text("Tap a reformer to choose your spot.")
+                        .font(Typo.secondary)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .transition(.opacity)
                 }
             case .booked:
-                primaryButton(
-                    title: selectedNumber.map { "Move to Reformer \($0)" } ?? "Change Reformer",
-                    enabled: selectedNumber != nil
-                ) {
+                primaryButton(title: "Change Reformer", enabled: selectedNumber != nil) {
                     Task { await vm.changeReformer(store: store) }
                 }
                 Button("Cancel booking") { isConfirmingCancel = true }
@@ -505,29 +537,28 @@ struct ClassDetailView: View {
                 EmptyView()
             }
         }
-        .frame(maxWidth: Theme.readableWidth)
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 6)
         .frame(maxWidth: .infinity)
-        .background {
-            LinearGradient(
-                colors: [Theme.background.opacity(0), Theme.background, Theme.background],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-        }
-        // The reserve label cross-fades its number.
-        .animation(Motion.ease, value: vm.selectedStationId)
+        // A little room under the button so scrolling to it never leaves it tight to the tab bar.
+        .padding(.bottom, 8)
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .scrollView) } action: { actionsFrame = $0 }
+        .id(Self.actionsID)
+        // The button fades and rises in; changing the selection rolls the number.
+        .animation(Motion.choose(Motion.easeLong, calm: calm), value: vm.selectedStationId)
     }
 
-    private func primaryButton(title: String, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func primaryButton(
+        title: String,
+        number: Int? = nil,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             if vm.isWorking {
                 ProgressView().tint(Theme.primaryLabel)
+            } else if let number {
+                Text(title).contentTransition(.numericText(value: Double(number)))
             } else {
-                Text(title).contentTransition(.numericText())
+                Text(title)
             }
         }
         .buttonStyle(PillButtonStyle())
@@ -543,5 +574,44 @@ struct ClassDetailView: View {
             SkeletonBlock(height: 300, radius: Theme.cardRadius)
                 .padding(.top, 8)
         }
+    }
+}
+
+// MARK: - Reveal the inline button
+
+/// The scroll view's visible height and how much of its bottom is covered (tab bar, home indicator).
+struct ScrollMetrics: Equatable {
+    var containerHeight: CGFloat = 0
+    var bottomInset: CGFloat = 0
+}
+
+/// When a reformer is first selected, gently scrolls just enough for the inline button to sit
+/// fully above the tab bar. Does nothing if it's already visible.
+private struct RevealActionsOnSelect: ViewModifier {
+    let selection: String?
+    let actionsFrame: CGRect
+    @Binding var metrics: ScrollMetrics
+    let calm: Bool
+    let reader: ScrollViewProxy
+
+    func body(content: Content) -> some View {
+        content
+            .onScrollGeometryChange(for: ScrollMetrics.self) { geo in
+                ScrollMetrics(containerHeight: geo.containerSize.height, bottomInset: geo.contentInsets.bottom)
+            } action: { _, value in
+                metrics = value
+            }
+            .onChange(of: selection) { old, new in
+                guard old == nil, new != nil else { return }
+                Task { @MainActor in
+                    // Let the button lay out before measuring.
+                    try? await Task.sleep(for: .milliseconds(80))
+                    let visibleBottom = metrics.containerHeight - metrics.bottomInset
+                    guard metrics.containerHeight > 0, actionsFrame.maxY > visibleBottom else { return }
+                    withAnimation(Motion.choose(Motion.easeLong, calm: calm)) {
+                        reader.scrollTo(ClassDetailView.actionsID, anchor: .bottom)
+                    }
+                }
+            }
     }
 }

@@ -18,7 +18,10 @@ enum ClassFamily: String, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// Square photo (1024×1024): tiles, list thumbnails, Home "At the Studio".
     var imageName: String { "class_\(rawValue)" }
+    /// Wide photo (1536×1024): class detail hero and the wide detail pane.
+    var wideImageName: String { "class_\(rawValue)_wide" }
 
     private var codePrefix: String {
         switch self {
@@ -59,4 +62,5 @@ enum ClassFamily: String, CaseIterable, Identifiable, Hashable, Sendable {
 extension ScheduleSession {
     var family: ClassFamily? { ClassFamily.from(code: classCode, name: className) }
     var photoName: String { family?.imageName ?? "studio_brampton" }
+    var widePhotoName: String { family?.wideImageName ?? "studio_brampton" }
 }
