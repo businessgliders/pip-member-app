@@ -1,15 +1,20 @@
 import SwiftUI
 import UIKit
 
-/// Signed-out experience: the looping video with the headline and one glass sign-in panel.
+/// Signed-out experience: logo at the top, the video open in the middle, and the headline
+/// grouped with the glass sign-in panel at the bottom.
 ///
-/// Layout rules: the video, gradient and splash target live in `.background` and never
-/// affect layout. The content is sized by the window's safe area only, and picks its layout
-/// from the window's own width (narrow → one column, wide → two columns), so split screen and
-/// resizing follow the window, not the device.
+/// Layout rules: the video and gradient live in `.background` and never affect layout.
+/// The content is sized by the window's safe area only, and picks its layout from the window's
+/// own width (narrow → one column, wide → two columns), so split screen and resizing follow
+/// the window, not the device.
 struct WelcomeView: View {
     /// The welcome headline — change it here.
     static let headline = "Your reformer\nis waiting."
+    /// The line under the headline.
+    static let subline = "Reformer Pilates in Brampton."
+    /// The label under (or beside) the top mark.
+    static let brandLabel = "PILATES IN PINK™"
     /// Windows at least this wide get the two-column layout.
     static let twoColumnWidth: CGFloat = 600
 
@@ -18,7 +23,9 @@ struct WelcomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var flow = SignInFlow()
     @State private var isOnScreen = false
+    @State private var showsBrandLabel = false
     @State private var showsHeadline = false
+    @State private var showsSubline = false
     @State private var showsActions = false
     @State private var keyboardVisible = false
 
@@ -42,11 +49,17 @@ struct WelcomeView: View {
         .onDisappear { isOnScreen = false }
         .onChange(of: calm) { _, new in flow.calm = new }
         .task(id: handoff.isSplashActive) {
+            // The splash logo has landed on the top mark: the label settles in beside it,
+            // then the headline, subline and button fade up from the bottom.
             guard !handoff.isSplashActive, !showsHeadline else { return }
-            try? await Task.sleep(for: .seconds(Motion.welcomeHeadlineDelay))
-            withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { showsHeadline = true }
-            try? await Task.sleep(for: .seconds(Motion.welcomeButtonStagger))
-            withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { showsActions = true }
+            let curve = Motion.choose(Motion.ease, calm: calm)
+            withAnimation(Motion.fade) { showsBrandLabel = true }
+            try? await Task.sleep(for: .seconds(Motion.welcomeEntranceDelay))
+            withAnimation(curve) { showsHeadline = true }
+            try? await Task.sleep(for: .seconds(Motion.welcomeEntranceStagger))
+            withAnimation(curve) { showsSubline = true }
+            try? await Task.sleep(for: .seconds(Motion.welcomeEntranceStagger))
+            withAnimation(curve) { showsActions = true }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
             let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
@@ -63,34 +76,21 @@ struct WelcomeView: View {
     private var backdrop: some View {
         ZStack {
             WelcomeVideoBackground(isActive: isPlaying)
+            // Keeps the white mark at the top and the white text at the bottom readable
+            // on every frame; the middle stays clear for the video.
             LinearGradient(
                 stops: [
-                    .init(color: Theme.fixedInk.opacity(0), location: 0),
-                    .init(color: Theme.fixedInk.opacity(0.25), location: 0.5),
-                    .init(color: Theme.fixedInk.opacity(0.55), location: 1)
+                    .init(color: Theme.fixedInk.opacity(0.35), location: 0),
+                    .init(color: Theme.fixedInk.opacity(0), location: 0.2),
+                    .init(color: Theme.fixedInk.opacity(0), location: 0.5),
+                    .init(color: Theme.fixedInk.opacity(0.65), location: 1)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
             .allowsHitTesting(false)
-            neonTarget
         }
         .ignoresSafeArea()
-    }
-
-    /// Invisible square over the neon "P", measured on the full window, so the splash logo
-    /// knows where to land.
-    private var neonTarget: some View {
-        GeometryReader { proxy in
-            let frame = WelcomeVideo.neonFrame(in: proxy.size)
-            Color.clear
-                .frame(width: frame.width, height: frame.height)
-                .position(x: frame.midX, y: frame.midY)
-                .logoHandoffTarget(.welcomeVideo)
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
     }
 
     /// Tapping the video (outside the panel) collapses it and puts the keyboard away.
@@ -104,32 +104,32 @@ struct WelcomeView: View {
     // MARK: Compact (portrait / narrow windows)
 
     private func compactLayout(_ proxy: GeometryProxy) -> some View {
-        let insets = proxy.safeAreaInsets
-        let windowHeight = proxy.size.height + insets.top + insets.bottom
-        // Headline centred about 38% down the window (it's ~2 lines ≈ 72pt tall).
-        let headlineGap = max(12, windowHeight * 0.38 - insets.top - 36)
-
-        return ScrollView {
+        ScrollView {
             VStack(spacing: 0) {
-                Spacer(minLength: 12)
-                    .frame(maxHeight: keyboardVisible ? 12 : headlineGap)
-                    .layoutPriority(1)
-                headline(alignment: .center, size: 28)
-                    .opacity(keyboardVisible ? 0 : 1)
-                    .frame(height: keyboardVisible ? 0 : nil, alignment: .top)
-                Spacer(minLength: 28)
-                SignInPanel(flow: flow)
-                    .riseIn(showsActions)
-                if !keyboardVisible {
-                    logo
-                        .padding(.top, 12)
-                        .riseIn(showsActions)
-                        .transition(.opacity)
+                // Top: the mark, with the label 10pt under it.
+                VStack(spacing: 10) {
+                    mark(size: 40)
+                    brandLabel
                 }
+                .padding(.top, 24)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Pilates in Pink")
+
+                // Middle: open, so the video shows through.
+                Spacer(minLength: 24)
+
+                // Bottom group: headline, subline, then the panel.
+                VStack(alignment: .leading, spacing: 0) {
+                    headlineGroup
+                    SignInPanel(flow: flow)
+                        .padding(.top, keyboardVisible ? 0 : 28)
+                        .riseIn(showsActions)
+                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 460)
+                // Above the home indicator — or the keyboard, which shrinks the safe area.
+                .padding(.bottom, 16)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, keyboardVisible ? 16 : 0)
-            .frame(maxWidth: 460)
             .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             .avoidingFold()
             .background { videoTapCatcher }
@@ -139,58 +139,87 @@ struct WelcomeView: View {
         .scrollDismissesKeyboard(.interactively)
     }
 
-    // MARK: Wide (landscape, iPhone Duo inner, iPad)
+    // MARK: Wide (landscape, iPhone Duo inner, iPad, wide split screen)
 
     private func wideLayout(_ proxy: GeometryProxy) -> some View {
-        FoldColumns(spacing: 48, gutter: 24) {
+        ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Spacer(minLength: 16)
-                headline(alignment: .leading, size: 32)
-                Spacer(minLength: 16)
-                logo
+                // Top-left: mark and label side by side.
+                HStack(spacing: 12) {
+                    mark(size: 32)
+                    brandLabel
+                }
+                .padding(.top, 24)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Pilates in Pink")
+
+                Spacer(minLength: 24)
+
+                // Bottom: headline on the left, panel on the right, bottoms aligned;
+                // with a fold, the gap between the columns sits on it.
+                FoldColumns(spacing: 48, gutter: 24, alignment: .bottom) {
+                    headlineGroup
+                } trailing: {
+                    SignInPanel(flow: flow)
+                        .riseIn(showsActions)
+                        .frame(maxWidth: 400)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .padding(.bottom, 24)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .padding(.vertical, 24)
+            .padding(.horizontal, 32)
+            .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .leading)
             .background { videoTapCatcher }
-        } trailing: {
-            ScrollView {
-                SignInPanel(flow: flow)
-                    .riseIn(showsActions)
-                    .frame(maxWidth: 400)
-                    .padding(.vertical, 24)
-                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
-                    .background { videoTapCatcher }
-            }
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .frame(height: proxy.size.height)
         }
-        .padding(.horizontal, 32)
-        .frame(width: proxy.size.width, height: proxy.size.height)
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.hidden)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: Pieces
 
-    private func headline(alignment: TextAlignment, size: CGFloat) -> some View {
-        Text(Self.headline)
-            .font(Typo.font(size, .light, relativeTo: .title))
-            .tracking(-0.3)
-            .lineSpacing(2)
-            .multilineTextAlignment(alignment)
-            .foregroundStyle(.white)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .center)
-            .shadow(color: Theme.fixedInk.opacity(0.25), radius: 12, y: 2)
-            .riseIn(showsHeadline)
-            .accessibilityAddTraits(.isHeader)
-            .allowsHitTesting(false)
+    /// Headline + subline, left-aligned. Fades out (and gives up its height) while the
+    /// keyboard is up, and comes back when it hides.
+    private var headlineGroup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(Self.headline)
+                .font(Typo.font(32, .light, relativeTo: .title))
+                .tracking(-0.3)
+                .lineSpacing(2)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
+                .foregroundStyle(.white)
+                .riseIn(showsHeadline)
+                .accessibilityAddTraits(.isHeader)
+            Text(Self.subline)
+                .font(Typo.font(15, .regular, relativeTo: .subheadline))
+                .foregroundStyle(.white.opacity(0.75))
+                .fixedSize(horizontal: false, vertical: true)
+                .riseIn(showsSubline)
+        }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .shadow(color: Theme.fixedInk.opacity(0.25), radius: 12, y: 2)
+        .opacity(keyboardVisible ? 0 : 1)
+        .frame(height: keyboardVisible ? 0 : nil, alignment: .bottom)
+        .accessibilityHidden(keyboardVisible)
+        .allowsHitTesting(false)
     }
 
-    private var logo: some View {
-        LogoMark(size: 28, style: .white)
-            .accessibilityElement()
-            .accessibilityLabel("Pilates in Pink")
+    /// The white mark — where the splash logo lands on a cold launch.
+    private func mark(size: CGFloat) -> some View {
+        LogoMark(size: size, style: .white)
+            .logoHandoffTarget(.welcome)
+    }
+
+    private var brandLabel: some View {
+        Text(Self.brandLabel)
+            .font(Typo.font(12, .medium, relativeTo: .caption))
+            .tracking(3)
+            .lineLimit(1)
+            .foregroundStyle(.white)
+            .shadow(color: Theme.fixedInk.opacity(0.25), radius: 8, y: 1)
+            .opacity(showsBrandLabel ? 1 : 0)
     }
 }
 

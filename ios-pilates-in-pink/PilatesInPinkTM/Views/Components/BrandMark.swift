@@ -303,12 +303,12 @@ extension View {
 
 // MARK: - Splash hand-off targets
 
-/// Where the splash logo should land: the neon "P" in the welcome video (signed out)
+/// Where the splash logo should land: the welcome screen's top mark (signed out)
 /// or the Home header mark (signed in).
 /// Targets report their on-screen frame and stay invisible until the splash has handed off.
 @Observable
 final class LogoHandoff {
-    enum Target: Hashable { case welcomeVideo, home }
+    enum Target: Hashable { case welcome, home }
     var frames: [Target: CGRect] = [:]
     /// True while the cold-launch splash is on screen; target marks wait underneath it.
     var isSplashActive: Bool = true

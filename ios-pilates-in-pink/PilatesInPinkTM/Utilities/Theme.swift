@@ -101,12 +101,15 @@ enum Motion {
     static let splashHandoff: Double = 0.5
     static let splashTrackingFrom: CGFloat = 4
     static let splashTrackingTo: CGFloat = 0.6
-    /// The neon "P" in the welcome video leans slightly; the splash logo tilts to meet it.
-    static let splashVideoTilt: Double = -11
+    /// Signed out: the splash logo glides and shrinks to the welcome screen's top mark
+    /// (same easeInOut curve as the Home hand-off).
+    static let splashWelcomeHandoff: Double = 0.6
 
     // Welcome (signed out)
-    static let welcomeHeadlineDelay: Double = 0.6
-    static let welcomeButtonStagger: Double = 0.15
+    /// Pause after the logo lands before the bottom group fades up.
+    static let welcomeEntranceDelay: Double = 0.1
+    /// Headline → subline → GET STARTED.
+    static let welcomeEntranceStagger: Double = 0.07
     /// Sign-in panel expanding/collapsing and changing steps (height + opacity).
     static let welcomePanel: Animation = .easeInOut(duration: 0.45)
     /// Headline fading out while the keyboard is up (0.3s, as specified).

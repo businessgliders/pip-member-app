@@ -116,8 +116,9 @@ struct SplashView: View {
     @State private var isHandingOff = false
     @State private var target: CGRect?
     @State private var targetIsCream = false
-    @State private var tilt: Double = 0
     @State private var creamOpacity: Double = 0
+    /// Signed out: the mark turns white as it lands on the welcome screen's white mark.
+    @State private var whiteOpacity: Double = 0
     @State private var logoOpacity: Double = 1
     @State private var backgroundOpacity: Double = 1
     @State private var startedAt = Date()
@@ -134,11 +135,16 @@ struct SplashView: View {
                     .opacity(backgroundOpacity)
 
                 ZStack {
-                    LogoMark(size: 96, trace: trace, fillOpacity: fill, ghost: ghost)
-                    LogoMark(size: 96, style: .creamFill)
-                        .opacity(creamOpacity)
-                    BrandMark(size: 96)
-                        .opacity(pngOpacity)
+                    ZStack {
+                        LogoMark(size: 96, trace: trace, fillOpacity: fill, ghost: ghost)
+                        LogoMark(size: 96, style: .creamFill)
+                            .opacity(creamOpacity)
+                        BrandMark(size: 96)
+                            .opacity(pngOpacity)
+                    }
+                    .opacity(1 - whiteOpacity)
+                    LogoMark(size: 96, style: .white)
+                        .opacity(whiteOpacity)
                 }
                 .overlay(alignment: .top) {
                     SplashWordmark(tracking: tracking, titleOpacity: titleOpacity, cityOpacity: cityOpacity)
@@ -146,7 +152,6 @@ struct SplashView: View {
                         .opacity(isHandingOff ? 0 : 1)
                 }
                 .scaleEffect(isHandingOff ? scale : 1)
-                .rotationEffect(.degrees(tilt))
                 .position(isHandingOff ? destination : center)
                 .opacity(logoOpacity)
             }
@@ -208,28 +213,29 @@ struct SplashView: View {
         try? await Task.sleep(for: .milliseconds(60))
         let key: LogoHandoff.Target? = switch phase {
         case .signedIn: .home
-        case .signedOut: .welcomeVideo
+        case .signedOut: .welcome
         case .loading: nil
         }
         let frame = key.flatMap { handoff.frames[$0] }
+        var duration = Motion.splashHandoff
 
         if calm || frame == nil {
             withAnimation(.easeInOut(duration: Motion.splashHandoff)) {
                 backgroundOpacity = 0
                 logoOpacity = 0
             }
-        } else if key == .welcomeVideo {
-            // Signed out: the logo grows into the neon "P" on the video's first frame
-            // and dissolves into it as the cream lifts away.
+        } else if key == .welcome {
+            // Signed out: the logo glides and shrinks from the centre to the top mark,
+            // turning white as the cream lifts away to reveal the video.
             target = frame
-            withAnimation(.easeInOut(duration: Motion.splashHandoff)) {
+            duration = Motion.splashWelcomeHandoff
+            withAnimation(.easeInOut(duration: duration)) {
                 isHandingOff = true
                 backgroundOpacity = 0
-                tilt = Motion.splashVideoTilt
                 trace = 1
                 fill = 1
+                whiteOpacity = 1
             }
-            withAnimation(.easeIn(duration: Motion.splashHandoff)) { logoOpacity = 0 }
         } else {
             target = frame
             targetIsCream = key == .home
@@ -241,7 +247,7 @@ struct SplashView: View {
                 if targetIsCream { creamOpacity = 1 }
             }
         }
-        try? await Task.sleep(for: .seconds(Motion.splashHandoff))
+        try? await Task.sleep(for: .seconds(duration))
         onFinish()
     }
 }

@@ -7,25 +7,6 @@ enum WelcomeVideo {
     static let url = Bundle.main.url(forResource: "welcome_loop", withExtension: "mp4")
     static let poster: UIImage? = Bundle.main.path(forResource: "welcome_poster", ofType: "jpg")
         .flatMap { UIImage(contentsOfFile: $0) }
-
-    /// Natural size of the video in pixels.
-    static let size = CGSize(width: 720, height: 1280)
-    /// Centre and glyph height of the neon "P" in the first frame, in video pixels.
-    static let neonCenter = CGPoint(x: 325, y: 550)
-    static let neonHeight: CGFloat = 436
-
-    /// Where the neon "P" lands on screen when the video aspect-fills `container`,
-    /// expressed as the square frame a `LogoMark` would need to cover it.
-    static func neonFrame(in container: CGSize) -> CGRect {
-        guard container.width > 0, container.height > 0 else { return .zero }
-        let scale = max(container.width / size.width, container.height / size.height)
-        let originX = (container.width - size.width * scale) / 2
-        let originY = (container.height - size.height * scale) / 2
-        let center = CGPoint(x: originX + neonCenter.x * scale, y: originY + neonCenter.y * scale)
-        // LogoMark's stem spans 704 of its 768 units.
-        let side = neonHeight * scale * LogoGeometry.canvas / (LogoGeometry.stemBottom - LogoGeometry.stemTop)
-        return CGRect(x: center.x - side / 2, y: center.y - side / 2, width: side, height: side)
-    }
 }
 
 /// Full-bleed poster with the muted loop on top. The player only appears once its first frame

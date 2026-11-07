@@ -91,27 +91,32 @@ struct FoldReader<Content: View>: View {
 struct FoldColumns<Leading: View, Trailing: View>: View {
     var spacing: CGFloat = 24
     var gutter: CGFloat = 18
+    var alignment: VerticalAlignment = .top
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
         FoldReader { info in
             if let fold = info.verticalFold() {
-                HStack(alignment: .top, spacing: 0) {
+                HStack(alignment: alignment, spacing: 0) {
                     leading
-                        .frame(width: max(0, fold.lowerBound - gutter), alignment: .top)
+                        .frame(width: max(0, fold.lowerBound - gutter), alignment: frameAlignment)
                     Color.clear
                         .frame(width: fold.upperBound - fold.lowerBound + gutter * 2, height: 1)
                         .accessibilityHidden(true)
                     trailing
-                        .frame(maxWidth: .infinity, alignment: .top)
+                        .frame(maxWidth: .infinity, alignment: frameAlignment)
                 }
             } else {
-                HStack(alignment: .top, spacing: spacing) {
-                    leading.frame(maxWidth: .infinity, alignment: .top)
-                    trailing.frame(maxWidth: .infinity, alignment: .top)
+                HStack(alignment: alignment, spacing: spacing) {
+                    leading.frame(maxWidth: .infinity, alignment: frameAlignment)
+                    trailing.frame(maxWidth: .infinity, alignment: frameAlignment)
                 }
             }
         }
+    }
+
+    private var frameAlignment: Alignment {
+        alignment == .bottom ? .bottom : .top
     }
 }
