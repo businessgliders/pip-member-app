@@ -23,38 +23,88 @@ struct HeroSlide: Identifiable {
     ]
 }
 
-/// Full-bleed photo carousel with page dots; auto-advances gently.
+/// Full-bleed photo carousel with page dots. Slides cross-fade every 6s (paused while the member is
+/// touching or scrolling), each photo slowly pushes in, and the words rise in just after the photo.
+/// A horizontal swipe changes slide with the same cross-fade.
 /// On the iPhone Duo inner display (`fold` set), the photo sits in the left pane and the words
 /// in the right, so neither the photo's subject nor any text lands on the fold.
 struct HeroCarousel: View {
     var fold: ClosedRange<CGFloat>? = nil
+    /// The page around the carousel is scrolling: hold the current slide.
+    var isScrolling: Bool = false
     let onAction: (HeroSlide.Action) -> Void
+
+    @Environment(\.calmMotion) private var calm
     @State private var index = 0
-    @State private var lastInteraction = Date()
+    /// Which slide's words are showing; follows `index` after a short beat.
+    @State private var textIndex = 0
+    @State private var isZooming = false
+    @State private var isTouching = false
+    @State private var lastChange = Date()
+    @State private var swipes = 0
     private let slides = HeroSlide.all
 
     var body: some View {
-        TabView(selection: $index) {
+        ZStack {
             ForEach(slides) { slide in
-                slideView(slide).tag(slide.id)
+                let isCurrent = slide.id == index
+                slideView(slide)
+                    .opacity(isCurrent ? 1 : 0)
+                    .allowsHitTesting(isCurrent)
+                    .accessibilityHidden(!isCurrent)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .never))
+        .contentShape(Rectangle())
+        .simultaneousGesture(swipe)
         .overlay(alignment: fold == nil ? .bottom : .bottomTrailing) {
             dots
                 .padding(.bottom, Theme.sheetRadius + 14)
                 .padding(.trailing, fold == nil ? 0 : 24)
         }
-        .onChange(of: index) { _, _ in lastInteraction = Date() }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(7))
-                if Date().timeIntervalSince(lastInteraction) >= 6.5 {
-                    withAnimation(.easeInOut(duration: 0.8)) { index = (index + 1) % slides.count }
-                }
+        .onAppear {
+            isZooming = true
+            textIndex = index
+        }
+        .onChange(of: index) { _, newValue in
+            lastChange = Date()
+            Task {
+                try? await Task.sleep(for: .seconds(Motion.heroTextDelay))
+                withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { textIndex = newValue }
             }
         }
-        .sensoryFeedback(.selection, trigger: index)
+        .onChange(of: isScrolling) { _, _ in lastChange = Date() }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(0.5))
+                guard !isTouching, !isScrolling,
+                      Date().timeIntervalSince(lastChange) >= Motion.heroSlideInterval else { continue }
+                show((index + 1) % slides.count)
+            }
+        }
+        .sensoryFeedback(.selection, trigger: swipes)
+    }
+
+    private func show(_ newIndex: Int) {
+        withAnimation(Motion.choose(Motion.heroSlideChange, calm: calm)) { index = newIndex }
+    }
+
+    private var swipe: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { _ in if !isTouching { isTouching = true } }
+            .onEnded { value in
+                isTouching = false
+                lastChange = Date()
+                let dx = value.translation.width
+                let dy = value.translation.height
+                guard abs(dx) > 50, abs(dx) > abs(dy) * 1.5 else { return }
+                swipes += 1
+                show(dx < 0 ? (index + 1) % slides.count : (index - 1 + slides.count) % slides.count)
+            }
+    }
+
+    /// Slow push-in on the showing photo (off when motion is calm).
+    private func zoomed(_ slide: HeroSlide) -> CGFloat {
+        calm ? 1 : (slide.id == index && isZooming ? 1.05 : 1)
     }
 
     @ViewBuilder
@@ -66,6 +116,9 @@ struct HeroCarousel: View {
                     .overlay(Color.black.opacity(0.42))
                 HStack(spacing: 0) {
                     StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
+                        .scaleEffect(zoomed(slide))
+                        .animation(.easeInOut(duration: Motion.heroPushInDuration), value: index)
+                        .animation(.easeInOut(duration: Motion.heroPushInDuration), value: isZooming)
                         .frame(width: fold.lowerBound)
                         .overlay {
                             LinearGradient(colors: [Color.black.opacity(0.3), .clear], startPoint: .top, endPoint: .center)
@@ -81,6 +134,9 @@ struct HeroCarousel: View {
         } else {
             ZStack(alignment: .bottomLeading) {
                 StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
+                    .scaleEffect(zoomed(slide))
+                    .animation(.easeInOut(duration: Motion.heroPushInDuration), value: index)
+                    .animation(.easeInOut(duration: Motion.heroPushInDuration), value: isZooming)
                 LinearGradient(
                     colors: [Color.black.opacity(0.35), .clear, Color.black.opacity(0.15), Color.black.opacity(0.62)],
                     startPoint: .top,
@@ -101,10 +157,12 @@ struct HeroCarousel: View {
                 .foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityAddTraits(.isHeader)
+                .riseIn(textIndex == slide.id)
             Text(slide.subtitle)
                 .font(Typo.font(16, .regular, relativeTo: .body))
                 .foregroundStyle(.white.opacity(0.88))
                 .fixedSize(horizontal: false, vertical: true)
+                .riseIn(textIndex == slide.id)
             Button { onAction(slide.action) } label: {
                 HStack(spacing: 8) {
                     Text(slide.button.uppercased())
@@ -134,13 +192,13 @@ struct HeroCarousel: View {
                     .frame(width: slide.id == index ? 18 : 6, height: 6)
             }
         }
-        .animation(Theme.spring, value: index)
+        .animation(Motion.choose(Motion.spring, calm: calm), value: index)
         .accessibilityElement()
         .accessibilityLabel("Slide \(index + 1) of \(slides.count)")
         .accessibilityAdjustableAction { direction in
             switch direction {
-            case .increment: index = min(slides.count - 1, index + 1)
-            case .decrement: index = max(0, index - 1)
+            case .increment: show(min(slides.count - 1, index + 1))
+            case .decrement: show(max(0, index - 1))
             @unknown default: break
             }
         }

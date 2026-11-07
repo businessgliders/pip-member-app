@@ -5,6 +5,8 @@ struct WelcomeView: View {
     private enum Field: Hashable { case firstName, lastName, email, password }
 
     @Environment(AuthStore.self) private var auth
+    @Environment(LogoHandoff.self) private var handoff
+    @Environment(\.calmMotion) private var calm
     @State private var mode: Mode = .signIn
     @State private var firstName: String = ""
     @State private var lastName: String = ""
@@ -32,8 +34,10 @@ struct WelcomeView: View {
             .ignoresSafeArea(.container, edges: .top)
         }
         .background(Theme.background.ignoresSafeArea())
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.0).delay(0.1)) { hasAppeared = true }
+        .task(id: handoff.isSplashActive) {
+            // Words rise in once the splash logo has landed.
+            guard !handoff.isSplashActive, !hasAppeared else { return }
+            withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { hasAppeared = true }
         }
         .sensoryFeedback(.selection, trigger: mode)
     }
@@ -52,13 +56,16 @@ struct WelcomeView: View {
                 Wordmark(color: .white, markSize: 30, textSize: 17)
                     .padding(.top, topInset + 12)
                 Spacer()
+                LogoMark(size: 56)
+                    .logoHandoffTarget(.signIn)
+                    .padding(.bottom, 16)
                 Text("Your reformer\nis waiting.")
                     .font(Typo.font(42, .light, relativeTo: .largeTitle))
                     .tracking(-0.8)
                     .foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
                     .opacity(hasAppeared ? 1 : 0)
-                    .offset(y: hasAppeared ? 0 : 12)
+                    .offset(y: hasAppeared || calm ? 0 : Motion.rise)
                     .accessibilityAddTraits(.isHeader)
                 Text("Book your class and choose your exact spot in the room.")
                     .font(Typo.font(16, .regular, relativeTo: .body))
@@ -153,7 +160,7 @@ struct WelcomeView: View {
                     field("First name", text: $firstName, field: .firstName, content: .givenName)
                     field("Last name", text: $lastName, field: .lastName, content: .familyName)
                 }
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(Motion.rise(calm: calm))
             }
             field("Email", text: $email, field: .email, content: .emailAddress, keyboard: .emailAddress)
             secureField
@@ -171,7 +178,7 @@ struct WelcomeView: View {
                     .strokeBorder(isFocused ? Theme.ink.opacity(0.4) : Color.clear, lineWidth: 1)
             )
             .foregroundStyle(Theme.ink)
-            .animation(.easeOut(duration: 0.2), value: isFocused)
+            .animation(Motion.fade, value: isFocused)
     }
 
     private func field(

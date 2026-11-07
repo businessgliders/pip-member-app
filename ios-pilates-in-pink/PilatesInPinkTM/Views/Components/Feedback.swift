@@ -1,19 +1,38 @@
 import SwiftUI
 
-/// Pulsing placeholder block used for loading skeletons.
+/// Loading placeholder: a blush block with a slow, soft highlight sweeping across (1.6s).
 struct SkeletonBlock: View {
     var width: CGFloat? = nil
     var height: CGFloat
     var radius: CGFloat = 8
-    @State private var isPulsing = false
+    @Environment(\.calmMotion) private var calm
+    @State private var sweep: CGFloat = -1
 
     var body: some View {
-        RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(Theme.taken)
+        let shape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+        shape
+            .fill(Theme.blush.opacity(0.7))
+            .overlay {
+                if !calm {
+                    GeometryReader { proxy in
+                        LinearGradient(
+                            colors: [.clear, Theme.card.opacity(0.75), .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: max(60, proxy.size.width * 0.6))
+                        .offset(x: sweep * proxy.size.width * 1.3)
+                    }
+                }
+            }
+            .clipShape(shape)
             .frame(width: width, height: height)
-            .opacity(isPulsing ? 0.45 : 1)
-            .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
+            .onAppear {
+                guard !calm else { return }
+                withAnimation(.easeInOut(duration: Motion.shimmerSweep).repeatForever(autoreverses: false)) {
+                    sweep = 1
+                }
+            }
             .accessibilityHidden(true)
     }
 }
@@ -94,20 +113,27 @@ struct ErrorCard: View {
     }
 }
 
-/// Calm empty state with a line icon.
+/// Calm empty state with a line icon, or the logo mark (40pt, blush, 60%).
 struct EmptyStateCard: View {
     let systemImage: String
     let title: String
     let message: String
+    var showsLogo: Bool = false
     var actionTitle: String? = nil
     var action: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.system(size: 30, weight: .ultraLight))
-                .foregroundStyle(Theme.ink)
-                .frame(height: 44)
+            if showsLogo {
+                LogoMark(size: 40, style: .quiet)
+                    .opacity(0.6)
+                    .frame(height: 44)
+            } else {
+                Image(systemName: systemImage)
+                    .font(.system(size: 30, weight: .ultraLight))
+                    .foregroundStyle(Theme.ink)
+                    .frame(height: 44)
+            }
             Text(title)
                 .font(Typo.font(20, .light, relativeTo: .title3))
                 .foregroundStyle(Theme.ink)

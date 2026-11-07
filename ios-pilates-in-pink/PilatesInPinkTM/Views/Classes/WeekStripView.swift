@@ -4,6 +4,8 @@ import SwiftUI
 struct WeekStripView: View {
     let vm: ScheduleViewModel
     @State private var direction: Int = 0
+    @Environment(\.calmMotion) private var calm
+    @Namespace private var selection
 
     var body: some View {
         VStack(spacing: 14) {
@@ -14,7 +16,7 @@ struct WeekStripView: View {
                     .font(Typo.font(28, .light, relativeTo: .title))
                     .foregroundStyle(Theme.ink)
                     .contentTransition(.numericText())
-                    .animation(Theme.spring, value: vm.monthTitle)
+                    .animation(Motion.ease, value: vm.monthTitle)
                 Spacer()
                 arrow("chevron.right", enabled: vm.canGoForward, label: "Next week") { shift(1) }
             }
@@ -25,13 +27,10 @@ struct WeekStripView: View {
                 }
             }
             .id(vm.weekStart)
-            .transition(.asymmetric(
-                insertion: .move(edge: direction >= 0 ? .trailing : .leading).combined(with: .opacity),
-                removal: .opacity
-            ))
+            // A new week fades in and rises slightly; nothing slides across the screen.
+            .transition(.asymmetric(insertion: Motion.rise(calm: calm), removal: .opacity))
         }
-        .clipped()
-        .animation(Theme.spring, value: vm.weekStart)
+        .animation(Motion.choose(Motion.ease, calm: calm), value: vm.weekStart)
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 24)
@@ -70,7 +69,8 @@ struct WeekStripView: View {
         let selectable = vm.isSelectable(day)
 
         return Button {
-            withAnimation(Theme.spring) { vm.select(day) }
+            // The pink circle glides to the new date.
+            withAnimation(Motion.choose(Motion.spring, calm: calm)) { vm.select(day) }
         } label: {
             VStack(spacing: 8) {
                 Text(String(StudioTime.format(day, "EEEEE")))
@@ -85,6 +85,7 @@ struct WeekStripView: View {
                     .background {
                         if isSelected {
                             Circle().fill(Theme.pink)
+                                .matchedGeometryEffect(id: "selected-day", in: selection)
                         }
                     }
                 Circle()

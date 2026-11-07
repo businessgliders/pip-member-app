@@ -25,6 +25,7 @@ struct ReservationsView: View {
                         systemImage: "calendar",
                         title: "Nothing booked yet",
                         message: "Find a class you love and choose your reformer.",
+                        showsLogo: true,
                         actionTitle: "Book a Class"
                     ) {
                         router.openClasses()
@@ -55,12 +56,12 @@ struct ReservationsView: View {
             .padding(.bottom, 32)
             .readableWidth()
             .avoidingFold()
-            .animation(Theme.softSpring, value: store.upcomingBookings)
+            .animation(Motion.ease, value: store.upcomingBookings)
         }
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
         .pushedScreenChrome()
-        .refreshable { await store.refreshBookings() }
+        .logoRefreshable { await store.refreshBookings() }
         .task { await store.loadStationsIfNeeded() }
     }
 }
@@ -83,6 +84,8 @@ struct CreditsView: View {
                             .font(Typo.font(56, .light, relativeTo: .largeTitle))
                             .monospacedDigit()
                             .foregroundStyle(Theme.ink)
+                            .contentTransition(.numericText())
+                            .animation(Motion.ease, value: credits.creditCount)
                         Text(credits.isUnlimited ? "Book as many classes as you like." : (credits.creditCount == 1 ? "class credit available" : "class credits available"))
                             .font(Typo.secondary)
                             .foregroundStyle(Theme.secondaryText)
@@ -133,7 +136,7 @@ struct CreditsView: View {
         .scrollIndicators(.hidden)
         .background(Theme.background.ignoresSafeArea())
         .pushedScreenChrome()
-        .refreshable { await store.refreshCredits() }
+        .logoRefreshable { await store.refreshCredits() }
         .task { await store.refreshCredits() }
     }
 
@@ -178,6 +181,9 @@ struct AccountDetailsView: View {
                 Button("Sign out") { isConfirmingSignOut = true }
                     .buttonStyle(PillButtonStyle(kind: .secondary))
                     .padding(.top, 16)
+
+                about
+                    .padding(.top, 28)
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)
@@ -191,6 +197,34 @@ struct AccountDetailsView: View {
             Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
             Button("Stay signed in", role: .cancel) {}
         }
+    }
+
+    /// About: the mark, the app version and where it's made.
+    private var about: some View {
+        VStack(spacing: 10) {
+            EyebrowText("About")
+            BrandMark(size: 44)
+                .padding(.vertical, 4)
+            Text("Pilates in Pink™")
+                .font(Typo.font(17, .light, relativeTo: .headline))
+                .foregroundStyle(Theme.ink)
+            Text(versionText)
+                .font(Typo.font(13, .regular, relativeTo: .footnote))
+                .monospacedDigit()
+                .foregroundStyle(Theme.secondaryText)
+            Text("Made in Brampton")
+                .font(Typo.font(13, .regular, relativeTo: .footnote))
+                .foregroundStyle(Theme.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "Version \(version) (\(build))"
     }
 
     private func row(_ label: String, _ value: String) -> some View {

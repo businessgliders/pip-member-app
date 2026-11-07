@@ -79,6 +79,9 @@ struct ReformerTile: View {
     let station: Station
     let state: ReformerTileState
     let action: () -> Void
+    @Environment(\.calmMotion) private var calm
+
+    private var isPink: Bool { state == .selected || state == .mine }
 
     var body: some View {
         Button(action: action) {
@@ -101,8 +104,7 @@ struct ReformerTile: View {
             .frame(height: 60)
             .background(background)
             .overlay(border)
-            .scaleEffect(state == .selected ? 1.02 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: state)
+            .animation(calm ? Motion.fade : Motion.tileFill, value: state)
         }
         .buttonStyle(PressableCardStyle())
         .disabled(!isInteractive)
@@ -116,13 +118,24 @@ struct ReformerTile: View {
 
     private var shape: RoundedRectangle { RoundedRectangle(cornerRadius: 16, style: .continuous) }
 
-    @ViewBuilder
+    /// Pink fills the tile from its centre outward when selected.
     private var background: some View {
-        switch state {
-        case .selected, .mine: shape.fill(Theme.pink)
-        case .taken, .outOfService: shape.fill(Theme.taken)
-        case .available, .locked: shape.fill(Theme.card)
+        ZStack {
+            switch state {
+            case .taken, .outOfService: shape.fill(Theme.taken)
+            default: shape.fill(Theme.card)
+            }
+            GeometryReader { proxy in
+                let diameter = (proxy.size.width * proxy.size.width + proxy.size.height * proxy.size.height).squareRoot()
+                Circle()
+                    .fill(Theme.pink)
+                    .frame(width: diameter, height: diameter)
+                    .scaleEffect(calm ? 1 : (isPink ? 1 : 0.01))
+                    .opacity(isPink ? 1 : 0)
+                    .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+            }
         }
+        .clipShape(shape)
     }
 
     @ViewBuilder

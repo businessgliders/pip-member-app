@@ -116,8 +116,8 @@ struct ClassesView: View {
                 }
 
                 rows
-                    .animation(Theme.softSpring, value: vm.filteredSessionsForSelectedDay)
-                    .animation(Theme.softSpring, value: vm.selectedDay)
+                    .animation(Motion.ease, value: vm.filteredSessionsForSelectedDay)
+                    .animation(Motion.ease, value: vm.selectedDay)
             }
             .padding(.bottom, 24)
             .readableWidth()
@@ -138,7 +138,7 @@ struct ClassesView: View {
                 .accessibilityLabel(vm.filters.isEmpty ? "Filters" : "Filters, \(vm.filters.count) active")
             }
         }
-        .refreshable {
+        .logoRefreshable {
             await vm.load()
             await store.refreshAll()
         }
@@ -232,7 +232,8 @@ struct ClassesView: View {
             EmptyStateCard(
                 systemImage: "moon.stars",
                 title: "A quiet day in the studio",
-                message: "No classes on this day — pick another date above."
+                message: "No classes on this day — pick another date above.",
+                showsLogo: true
             )
         }
     }

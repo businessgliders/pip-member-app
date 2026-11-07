@@ -9,6 +9,7 @@ struct MemberCardView: View {
     @Environment(StudioStore.self) private var store
     @State private var segment: Segment = .card
     @State private var hasAppeared = false
+    @Environment(\.calmMotion) private var calm
     @Namespace private var segmentNS
 
     var body: some View {
@@ -58,7 +59,7 @@ struct MemberCardView: View {
     private var segmentContent: some View {
         if segment == .card {
             card
-                .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                .transition(.opacity)
         } else {
             guestPasses
                 .transition(.opacity)
@@ -104,7 +105,7 @@ struct MemberCardView: View {
     private var card: some View {
         VStack(spacing: 0) {
             HStack {
-                Wordmark(color: Theme.cream, markSize: 28, textSize: 18)
+                Wordmark(color: Theme.cream, markSize: 28, textSize: 18, creamMark: true)
                 Spacer()
                 Text("BRAMPTON")
                     .font(Typo.font(11, .medium, relativeTo: .caption2))
@@ -138,9 +139,8 @@ struct MemberCardView: View {
                 .strokeBorder(Theme.hairline, lineWidth: 1)
         )
         .environment(\.colorScheme, .light)
-        .scaleEffect(hasAppeared ? 1 : 0.97)
-        .opacity(hasAppeared ? 1 : 0)
-        .onAppear { withAnimation(Theme.softSpring) { hasAppeared = true } }
+        .riseIn(hasAppeared)
+        .onAppear { withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { hasAppeared = true } }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Member card for \(auth.displayName)")
     }

@@ -10,6 +10,7 @@ struct ClassDetailView: View {
     @State private var calendarAdded = 0
     @State private var isWide = false
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.calmMotion) private var calm
     let isEmbedded: Bool
 
     init(route: ClassRoute, isEmbedded: Bool = false) {
@@ -38,8 +39,8 @@ struct ClassDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar { detailToolbar }
-        .animation(Theme.spring, value: vm.toast)
-        .animation(Theme.spring, value: calendarNote)
+        .animation(Motion.choose(Motion.ease, calm: calm), value: vm.toast)
+        .animation(Motion.choose(Motion.ease, calm: calm), value: calendarNote)
         .task {
             await vm.load(store: store)
             await store.loadClassTypesIfNeeded()
@@ -58,7 +59,8 @@ struct ClassDetailView: View {
         .alert(item: $vm.resultMessage) { result in
             Alert(title: Text(result.title), message: Text(result.message), dismissButton: .default(Text("OK")))
         }
-        .sensoryFeedback(.success, trigger: vm.successTick)
+        // A new booking's success haptic belongs to the "You're booked" moment, so it plays once.
+        .sensoryFeedback(trigger: vm.successTick) { _, _ in vm.confirmation == nil ? .success : nil }
         .sensoryFeedback(.warning, trigger: vm.errorTick)
         .sensoryFeedback(.selection, trigger: vm.selectedStationId)
         .sensoryFeedback(.success, trigger: calendarAdded)
@@ -163,7 +165,7 @@ struct ClassDetailView: View {
             .padding(.bottom, 24)
             .frame(maxWidth: Theme.readableWidth)
             .frame(maxWidth: .infinity)
-            .animation(Theme.spring, value: vm.actionError)
+            .animation(Motion.choose(Motion.ease, calm: calm), value: vm.actionError)
         }
         .scrollIndicators(.hidden)
         .safeAreaInset(edge: .bottom) {
@@ -185,16 +187,16 @@ struct ClassDetailView: View {
         .background(Theme.background)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: Theme.sheetRadius, topTrailingRadius: Theme.sheetRadius, style: .continuous))
         .padding(.top, -Theme.sheetRadius)
-        .animation(Theme.spring, value: vm.actionError)
+        .animation(Motion.choose(Motion.ease, calm: calm), value: vm.actionError)
     }
 
     @ViewBuilder
     private var actionErrorCard: some View {
         if let error = vm.actionError {
             ErrorCard(error: error, onDismiss: {
-                withAnimation(Theme.spring) { vm.actionError = nil }
+                withAnimation(Motion.fade) { vm.actionError = nil }
             })
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .transition(Motion.rise(calm: calm))
         }
     }
 
@@ -215,7 +217,7 @@ struct ClassDetailView: View {
             ToastView(text: toast)
                 .padding(.top, 8)
                 .padding(.horizontal, 16)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(Motion.rise(calm: calm))
         }
     }
 
@@ -350,7 +352,7 @@ struct ClassDetailView: View {
                     stations: store.stations,
                     stateFor: { vm.tileState(for: $0) },
                     onTap: { station in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { vm.toggle(station) }
+                        withAnimation(Motion.choose(Motion.tileFill, calm: calm)) { vm.toggle(station) }
                     }
                 )
             }
@@ -516,7 +518,8 @@ struct ClassDetailView: View {
             )
             .ignoresSafeArea()
         }
-        .animation(Theme.spring, value: vm.selectedStationId)
+        // The reserve label cross-fades its number.
+        .animation(Motion.ease, value: vm.selectedStationId)
     }
 
     private func primaryButton(title: String, enabled: Bool, action: @escaping () -> Void) -> some View {

@@ -5,16 +5,21 @@ struct HomeView: View {
     @Environment(StudioStore.self) private var store
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(LogoHandoff.self) private var handoff
+    @Environment(\.calmMotion) private var calm
 
     @State private var topInset: CGFloat = 0
     @State private var fold = FoldInfo()
+    /// Sections fade and rise once, on first appearance only.
+    @State private var revealStep = 0
+    @State private var isScrolling = false
 
     private var isRegular: Bool { hSize == .regular }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                HeroCarousel(fold: fold.verticalFold(), onAction: handle)
+                HeroCarousel(fold: fold.verticalFold(), isScrolling: isScrolling, onAction: handle)
                     .containerRelativeFrame(.vertical) { height, _ in max(420, height * 0.55) }
                     .overlay(alignment: .top) { topBar }
 
@@ -23,6 +28,10 @@ struct HomeView: View {
             }
         }
         .scrollIndicators(.hidden)
+        .onScrollPhaseChange { _, phase in
+            let scrolling = phase != .idle
+            if scrolling != isScrolling { isScrolling = scrolling }
+        }
         .ignoresSafeArea(.container, edges: .top)
         .readFold(into: $fold)
         .background {
@@ -34,7 +43,16 @@ struct HomeView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .refreshable { await store.refreshAll() }
+        .logoRefreshable(topPadding: topBarTop + 54) { await store.refreshAll() }
+        .task(id: handoff.isSplashActive) { await revealSections() }
+    }
+
+    private func revealSections() async {
+        guard !handoff.isSplashActive, revealStep == 0 else { return }
+        for step in 1...3 {
+            withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { revealStep = step }
+            try? await Task.sleep(for: .seconds(Motion.sectionStagger))
+        }
     }
 
     private func handle(_ action: HeroSlide.Action) {
@@ -60,15 +78,16 @@ struct HomeView: View {
 
             if fold.verticalFold() == nil { Spacer() }
 
-            HStack(spacing: 6) {
-                Image(systemName: "location")
-                    .font(.system(size: 12, weight: .regular))
+            HStack(spacing: 7) {
+                LogoMark(size: 22, style: .creamFill)
+                    .logoHandoffTarget(.home)
                 Text("BRAMPTON")
                     .font(Typo.font(12, .medium, relativeTo: .caption))
                     .tracking(1.8)
             }
             .foregroundStyle(Theme.ink)
-            .padding(.horizontal, 16)
+            .padding(.leading, 12)
+            .padding(.trailing, 16)
             .frame(height: 44)
             .glass(Capsule())
             .accessibilityElement(children: .combine)
@@ -103,23 +122,30 @@ struct HomeView: View {
                         SectionHeader(text: "Up Next")
                         reservationsCard
                     }
+                    .riseIn(revealStep >= 1)
                 } trailing: {
                     VStack(alignment: .leading, spacing: 14) {
                         SectionHeader(text: "Credits")
                         creditsRow
                     }
+                    .riseIn(revealStep >= 2)
                 }
             } else {
                 VStack(alignment: .leading, spacing: 14) {
-                    SectionHeader(text: "Up Next")
-                    reservationsCard
+                    VStack(alignment: .leading, spacing: 14) {
+                        SectionHeader(text: "Up Next")
+                        reservationsCard
+                    }
+                    .riseIn(revealStep >= 1)
                     creditsRow
+                        .riseIn(revealStep >= 2)
                 }
             }
             VStack(alignment: .leading, spacing: 14) {
                 SectionHeader(text: "At the Studio")
                 studioTiles
             }
+            .riseIn(revealStep >= 3)
         }
         .padding(.horizontal, 20)
         .padding(.top, 30)
@@ -186,6 +212,8 @@ struct HomeView: View {
                 }
             } else {
                 VStack(alignment: .leading, spacing: 14) {
+                    LogoMark(size: 40, style: .quiet)
+                        .opacity(0.6)
                     Text("Nothing booked yet")
                         .font(Typo.font(22, .light, relativeTo: .title3))
                         .foregroundStyle(Theme.ink)
@@ -198,7 +226,7 @@ struct HomeView: View {
             }
         }
         .cardStyle(padding: 20)
-        .animation(Theme.softSpring, value: store.upcomingBookings.count)
+        .animation(Motion.choose(Motion.ease, calm: calm), value: store.upcomingBookings.count)
     }
 
     private var upcomingText: String {
@@ -221,6 +249,8 @@ struct HomeView: View {
                             .font(Typo.body)
                             .monospacedDigit()
                             .foregroundStyle(Theme.ink)
+                            .contentTransition(.numericText())
+                            .animation(Motion.ease, value: credits.summaryLine)
                         if let renews = credits.renewsDate {
                             Text("Renews \(StudioTime.format(renews, "MMM d"))")
                                 .font(Typo.secondary)

@@ -57,8 +57,131 @@ enum Theme {
     static let sheetRadius: CGFloat = 28
     static let gap: CGFloat = 12
     static let readableWidth: CGFloat = 680
-    static let spring: Animation = .spring(response: 0.45, dampingFraction: 0.85)
-    static let softSpring: Animation = .spring(response: 0.6, dampingFraction: 0.9)
+    static let spring: Animation = Motion.spring
+    static let softSpring: Animation = Motion.softSpring
+}
+
+// MARK: - Motion (quiet five-star hotel)
+
+/// Every timing and curve in the app lives here.
+/// Rules: 0.35–0.8s, easeInOut or springs with damping ≥ 0.85 (no overshoot), content rises 8–12pt,
+/// one attention animation at a time, and nothing ever blocks a tap.
+/// Reduce Motion and Low Power Mode turn every movement into a short cross-fade (`calm`).
+enum Motion {
+    // Durations
+    static let short: Double = 0.35
+    static let standard: Double = 0.5
+    static let long: Double = 0.6
+    static let longest: Double = 0.8
+
+    // Curves
+    static let fade: Animation = .easeInOut(duration: short)
+    static let ease: Animation = .easeInOut(duration: standard)
+    static let easeLong: Animation = .easeInOut(duration: long)
+    static let spring: Animation = .spring(response: 0.45, dampingFraction: 0.88)
+    static let softSpring: Animation = .spring(response: 0.6, dampingFraction: 0.92)
+    /// Press feedback: scale 0.98, slightly dimmed, settles back without overshoot.
+    static let press: Animation = .spring(response: 0.35, dampingFraction: 0.9)
+    static let pressScale: CGFloat = 0.98
+    static let pressOpacity: Double = 0.88
+
+    // Distances
+    /// How far content rises as it fades in.
+    static let rise: CGFloat = 10
+
+    // Splash
+    static let splashTrace: Double = 0.6
+    static let splashPNGFade: Double = 0.2
+    static let splashWordmarkDelay: Double = 0.4
+    static let splashWordmarkDuration: Double = 0.5
+    static let splashCityDelay: Double = 0.62
+    static let splashCityDuration: Double = 0.35
+    static let splashMinimum: Double = 0.9
+    static let splashMaximum: Double = 1.6
+    static let splashHandoff: Double = 0.5
+    static let splashTrackingFrom: CGFloat = 4
+    static let splashTrackingTo: CGFloat = 0.6
+
+    // Logo
+    static let refreshTrace: Double = 1.2
+    static let refreshTraceAnimation: Animation = .easeInOut(duration: refreshTrace)
+    static let bookingJoin: Animation = .easeInOut(duration: long)
+    static let bookingSeparation: CGFloat = 10
+    static let bookingGlowFade: Animation = .easeInOut(duration: longest)
+    static let detailStagger: Double = 0.06
+
+    // Reformer select (0.3s, as specified for the centre-out fill)
+    static let tileFill: Animation = .easeInOut(duration: 0.3)
+
+    // Home
+    static let heroPushInDuration: Double = 9
+    static let heroSlideInterval: Double = 6
+    static let heroSlideChange: Animation = .easeInOut(duration: longest)
+    static let heroTextDelay: Double = 0.2
+    static let sectionStagger: Double = 0.07
+
+    // Skeleton shimmer
+    static let shimmerSweep: Double = 1.6
+
+    /// The requested animation, or a short cross-fade when motion should be calm.
+    static func choose(_ animation: Animation, calm: Bool) -> Animation {
+        calm ? fade : animation
+    }
+
+    /// A gentle fade + rise, or a plain fade when calm.
+    static func rise(calm: Bool) -> AnyTransition {
+        calm ? .opacity : .opacity.combined(with: .offset(y: rise))
+    }
+}
+
+/// Watches Low Power Mode so it can be treated like Reduce Motion.
+@Observable
+final class LowPowerMonitor {
+    static let shared = LowPowerMonitor()
+    private(set) var isOn: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled
+    private var observer: NSObjectProtocol?
+
+    private init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            let value = ProcessInfo.processInfo.isLowPowerModeEnabled
+            Task { @MainActor in self?.isOn = value }
+        }
+    }
+}
+
+extension EnvironmentValues {
+    /// True when Reduce Motion or Low Power Mode is on: movement becomes a short cross-fade.
+    @Entry var calmMotion: Bool = false
+}
+
+/// Applied once at the root; publishes `calmMotion` to the whole app.
+struct CalmMotionProvider: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let power = LowPowerMonitor.shared
+
+    func body(content: Content) -> some View {
+        content.environment(\.calmMotion, reduceMotion || power.isOn)
+    }
+}
+
+/// Fades and rises content once, after an optional delay. Never blocks taps.
+struct RiseIn: ViewModifier {
+    var isVisible: Bool
+    @Environment(\.calmMotion) private var calm
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .offset(y: isVisible || calm ? 0 : Motion.rise)
+    }
+}
+
+extension View {
+    func riseIn(_ isVisible: Bool) -> some View { modifier(RiseIn(isVisible: isVisible)) }
 }
 
 // MARK: - Typography (DM Sans, SF Pro fallback, Dynamic Type)
@@ -202,6 +325,7 @@ struct PillButtonStyle: ButtonStyle {
         let configuration: ButtonStyleConfiguration
         let kind: Kind
         @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.calmMotion) private var calm
 
         var body: some View {
             let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -222,9 +346,9 @@ struct PillButtonStyle: ButtonStyle {
                         shape.fill(Theme.card).overlay(shape.strokeBorder(Theme.hairline, lineWidth: 1))
                     }
                 }
-                .opacity(isEnabled ? (configuration.isPressed ? 0.85 : 1) : 0.4)
-                .scaleEffect(configuration.isPressed ? 0.98 : 1)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: configuration.isPressed)
+                .opacity(isEnabled ? (configuration.isPressed ? Motion.pressOpacity : 1) : 0.4)
+                .scaleEffect(configuration.isPressed && !calm ? Motion.pressScale : 1)
+                .animation(Motion.press, value: configuration.isPressed)
                 .contentShape(shape)
         }
     }
@@ -243,12 +367,22 @@ struct QuietButtonStyle: ButtonStyle {
     }
 }
 
+/// Tiles, photos and rows: scale 0.98, slightly dimmed, settles back.
 struct PressableCardStyle: ButtonStyle {
     func makeBody(configuration: ButtonStyleConfiguration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .opacity(configuration.isPressed ? 0.9 : 1)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: configuration.isPressed)
+        PressBody(configuration: configuration)
+    }
+
+    private struct PressBody: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.calmMotion) private var calm
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed && !calm ? Motion.pressScale : 1)
+                .opacity(configuration.isPressed ? Motion.pressOpacity : 1)
+                .animation(Motion.press, value: configuration.isPressed)
+        }
     }
 }
 

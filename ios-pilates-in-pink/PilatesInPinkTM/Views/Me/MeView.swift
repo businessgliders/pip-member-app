@@ -57,7 +57,7 @@ struct MeView: View {
                 }
             }
         }
-        .refreshable { await store.refreshAll() }
+        .logoRefreshable { await store.refreshAll() }
         .task { if !store.hasLoadedCredits { await store.refreshCredits() } }
         .sheet(item: $studioSheet) { section in
             StudioInfoSheet(initial: section)
@@ -171,6 +171,7 @@ struct MeView: View {
                         .monospacedDigit()
                         .foregroundStyle(Theme.ink)
                         .contentTransition(.numericText())
+                        .animation(Motion.ease, value: store.classesThisMonth)
                 }
                 Spacer()
                 Text(StudioTime.format(now, "MMMM"))

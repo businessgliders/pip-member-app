@@ -26,7 +26,7 @@ struct StudioPhoto: View {
             .opacity(fadeIn ? (isVisible ? 1 : 0) : 1)
             .onAppear {
                 guard fadeIn, !isVisible else { return }
-                withAnimation(.easeOut(duration: 1.4)) { isVisible = true }
+                withAnimation(.easeInOut(duration: Motion.longest)) { isVisible = true }
             }
             .accessibilityHidden(true)
     }

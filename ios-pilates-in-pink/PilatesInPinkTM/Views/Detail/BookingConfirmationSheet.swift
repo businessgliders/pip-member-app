@@ -1,14 +1,20 @@
 import SwiftUI
 import UIKit
 
+/// The one celebration in the app: the two halves of the logo join at the stem over a soft blush
+/// glow that fades away, one success haptic, and the details rise in line by line.
 struct BookingConfirmationSheet: View {
     private enum CalendarState: Equatable { case idle, adding, added, denied, failed }
 
     let confirmation: BookingConfirmation
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
+    @Environment(\.calmMotion) private var calm
     @State private var calendarState: CalendarState = .idle
-    @State private var hasAppeared = false
+    @State private var isJoined = false
+    @State private var glow: Double = 1
+    @State private var revealStep = 0
+    @State private var celebrated = 0
 
     var body: some View {
         ScrollView {
@@ -36,30 +42,40 @@ struct BookingConfirmationSheet: View {
         .presentationCornerRadius(Theme.sheetRadius)
         .presentationBackground(Theme.background)
         .sensoryFeedback(.success, trigger: calendarState == .added)
-        .onAppear {
-            withAnimation(.spring(response: 0.55, dampingFraction: 0.7).delay(0.1)) { hasAppeared = true }
+        .sensoryFeedback(.success, trigger: celebrated)
+        .task { await celebrate() }
+    }
+
+    private func celebrate() async {
+        guard celebrated == 0 else { return }
+        celebrated = 1
+        withAnimation(Motion.choose(Motion.bookingJoin, calm: calm)) { isJoined = true }
+        withAnimation(Motion.bookingGlowFade.delay(calm ? 0 : 0.3)) { glow = 0 }
+        try? await Task.sleep(for: .seconds(calm ? 0.05 : 0.25))
+        for step in 1...5 {
+            withAnimation(Motion.choose(Motion.ease, calm: calm)) { revealStep = step }
+            try? await Task.sleep(for: .seconds(Motion.detailStagger))
         }
     }
 
     private var summary: some View {
         VStack(alignment: .leading, spacing: 0) {
             ZStack {
-                Circle()
-                    .fill(Theme.blush)
-                    .frame(width: 84, height: 84)
-                    .scaleEffect(hasAppeared ? 1 : 0.6)
-                Circle()
-                    .fill(Theme.pink)
-                    .frame(width: 52, height: 52)
-                    .scaleEffect(hasAppeared ? 1 : 0.3)
-                Image(systemName: "checkmark")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(Theme.onPink)
-                    .opacity(hasAppeared ? 1 : 0)
+                RadialGradient(
+                    colors: [Theme.blush, Theme.blush.opacity(0)],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: 80
+                )
+                .frame(width: 180, height: 160)
+                .opacity(glow)
+                LogoMark(size: 76, separation: isJoined || calm ? 0 : Motion.bookingSeparation)
+                    .opacity(calm && !isJoined ? 0 : 1)
             }
+            .frame(height: 110)
             .frame(maxWidth: .infinity)
-            .padding(.top, 12)
-            .padding(.bottom, 22)
+            .padding(.top, 4)
+            .padding(.bottom, 12)
             .accessibilityHidden(true)
 
             Text("You're booked")
@@ -67,15 +83,20 @@ struct BookingConfirmationSheet: View {
                 .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity)
                 .padding(.bottom, 20)
+                .riseIn(revealStep >= 1)
 
             VStack(spacing: 0) {
                 detailRow("Class", confirmation.className)
+                    .riseIn(revealStep >= 2)
                 Hairline()
                 detailRow("Date", StudioTime.format(confirmation.start, "EEEE, MMM d"))
+                    .riseIn(revealStep >= 3)
                 Hairline()
                 detailRow("Time", StudioTime.timeRange(confirmation.start, confirmation.end))
+                    .riseIn(revealStep >= 4)
                 Hairline()
                 detailRow("Reformer", "\(confirmation.reformerNumber)")
+                    .riseIn(revealStep >= 5)
             }
             .padding(.horizontal, 18)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
@@ -146,9 +167,9 @@ struct BookingConfirmationSheet: View {
                     end: confirmation.end,
                     reformerNumber: confirmation.reformerNumber
                 )
-                withAnimation(Theme.spring) { calendarState = outcome == .added ? .added : .denied }
+                withAnimation(Motion.fade) { calendarState = outcome == .added ? .added : .denied }
             } catch {
-                withAnimation(Theme.spring) { calendarState = .failed }
+                withAnimation(Motion.fade) { calendarState = .failed }
             }
         }
     }
