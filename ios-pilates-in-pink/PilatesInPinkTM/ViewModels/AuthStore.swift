@@ -78,6 +78,26 @@ final class AuthStore {
         try await SupabaseService.client.auth.resetPasswordForEmail(email)
     }
 
+    // MARK: One-time codes
+
+    /// Emails a 6-digit sign-in code to an existing member (never creates an account).
+    func sendEmailCode(email: String) async throws {
+        try await SupabaseService.client.auth.signInWithOTP(email: email, shouldCreateUser: false)
+    }
+
+    func verifyEmailCode(email: String, code: String) async throws {
+        _ = try await SupabaseService.client.auth.verifyOTP(email: email, token: code, type: .email)
+    }
+
+    /// Texts a 6-digit sign-in code. `phone` is E.164 (+1…).
+    func sendPhoneCode(phone: String) async throws {
+        try await SupabaseService.client.auth.signInWithOTP(phone: phone)
+    }
+
+    func verifyPhoneCode(phone: String, code: String) async throws {
+        _ = try await SupabaseService.client.auth.verifyOTP(phone: phone, token: code, type: .sms)
+    }
+
     func signOut() async {
         do {
             try await SupabaseService.client.auth.signOut()

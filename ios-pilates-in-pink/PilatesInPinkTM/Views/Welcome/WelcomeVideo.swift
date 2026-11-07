@@ -31,23 +31,33 @@ enum WelcomeVideo {
 /// Full-bleed poster with the muted loop on top. The player only appears once its first frame
 /// has rendered (identical to the poster), so there's never a black flash.
 /// With `isActive` false the video pauses; when calm motion is on, only the poster shows.
+/// Never affects layout: it only fills (and clips to) the space it's given.
 struct WelcomeVideoBackground: View {
     var isActive: Bool
     @Environment(\.calmMotion) private var calm
 
     var body: some View {
-        ZStack {
-            Color(hex: 0xB0386A) // wall pink, under the poster while it decodes
-            if let poster = WelcomeVideo.poster {
-                Image(uiImage: poster)
-                    .resizable()
-                    .scaledToFill()
+        Color(hex: 0xB0386A) // wall pink, under the poster while it decodes
+            .overlay {
+                if let poster = WelcomeVideo.poster {
+                    // An aspect-filled image reports its overflowing size; the clear
+                    // container keeps that from ever reaching the screen's layout.
+                    Color.clear
+                        .overlay {
+                            Image(uiImage: poster)
+                                .resizable()
+                                .scaledToFill()
+                        }
+                        .clipped()
+                }
             }
-            if !calm, let url = WelcomeVideo.url {
-                LoopingVideoView(url: url, isPlaying: isActive)
+            .overlay {
+                if !calm, let url = WelcomeVideo.url {
+                    LoopingVideoView(url: url, isPlaying: isActive)
+                }
             }
-        }
-        .ignoresSafeArea()
+            .clipped()
+            .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }

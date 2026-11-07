@@ -107,7 +107,10 @@ enum Motion {
     // Welcome (signed out)
     static let welcomeHeadlineDelay: Double = 0.6
     static let welcomeButtonStagger: Double = 0.15
-    static let signInStep: Animation = .easeInOut(duration: standard)
+    /// Sign-in panel expanding/collapsing and changing steps (height + opacity).
+    static let welcomePanel: Animation = .easeInOut(duration: 0.45)
+    /// Headline fading out while the keyboard is up (0.3s, as specified).
+    static let welcomeKeyboardFade: Animation = .easeInOut(duration: 0.3)
 
     // Logo
     static let refreshTrace: Double = 1.2
