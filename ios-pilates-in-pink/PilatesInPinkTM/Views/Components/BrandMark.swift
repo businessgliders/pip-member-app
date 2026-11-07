@@ -125,6 +125,8 @@ struct LogoMark: View {
         case cream
         /// Soft pink outline, blush fill — empty states (drawn at reduced opacity).
         case quiet
+        /// White outline, faint white fill — over the welcome video.
+        case white
     }
 
     var size: CGFloat
@@ -139,6 +141,7 @@ struct LogoMark: View {
         case .brand, .creamFill: Theme.pink
         case .cream: Theme.cream
         case .quiet: Theme.softPink
+        case .white: .white
         }
     }
 
@@ -148,6 +151,7 @@ struct LogoMark: View {
         case .creamFill: Theme.cream
         case .cream: Theme.cream.opacity(0.16)
         case .quiet: Theme.blush
+        case .white: Color.white.opacity(0.14)
         }
     }
 
@@ -299,11 +303,12 @@ extension View {
 
 // MARK: - Splash hand-off targets
 
-/// Where the splash logo should land: the sign-in mark or the Home header mark.
+/// Where the splash logo should land: the neon "P" in the welcome video (signed out)
+/// or the Home header mark (signed in).
 /// Targets report their on-screen frame and stay invisible until the splash has handed off.
 @Observable
 final class LogoHandoff {
-    enum Target: Hashable { case signIn, home }
+    enum Target: Hashable { case welcomeVideo, home }
     var frames: [Target: CGRect] = [:]
     /// True while the cold-launch splash is on screen; target marks wait underneath it.
     var isSplashActive: Bool = true

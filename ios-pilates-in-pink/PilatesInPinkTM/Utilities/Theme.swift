@@ -101,6 +101,13 @@ enum Motion {
     static let splashHandoff: Double = 0.5
     static let splashTrackingFrom: CGFloat = 4
     static let splashTrackingTo: CGFloat = 0.6
+    /// The neon "P" in the welcome video leans slightly; the splash logo tilts to meet it.
+    static let splashVideoTilt: Double = -11
+
+    // Welcome (signed out)
+    static let welcomeHeadlineDelay: Double = 0.6
+    static let welcomeButtonStagger: Double = 0.15
+    static let signInStep: Animation = .easeInOut(duration: standard)
 
     // Logo
     static let refreshTrace: Double = 1.2

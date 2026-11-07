@@ -73,6 +73,11 @@ final class AuthStore {
         return response.session != nil
     }
 
+    /// Emails a password-reset link.
+    func resetPassword(email: String) async throws {
+        try await SupabaseService.client.auth.resetPasswordForEmail(email)
+    }
+
     func signOut() async {
         do {
             try await SupabaseService.client.auth.signOut()
