@@ -12,6 +12,8 @@ struct SignInPanel: View {
     @Environment(\.calmMotion) private var calm
     @FocusState private var focus: Field?
     @State private var showsPassword = false
+    /// Focus for the UIKit new-password field, which sits outside `@FocusState`.
+    @State private var newPasswordFocused = false
     @Namespace private var morph
 
     private let secondary = Color.white.opacity(0.7)
@@ -39,11 +41,16 @@ struct SignInPanel: View {
                 focusSoon(after: Motion.standard)
             } else {
                 focus = nil
+                newPasswordFocused = false
             }
         }
         .onChange(of: flow.step) { _, _ in
             showsPassword = false
+            newPasswordFocused = false
             focusSoon(after: Motion.short)
+        }
+        .onChange(of: focus) { _, value in
+            if value != nil { newPasswordFocused = false }
         }
         .onChange(of: flow.code) { _, _ in
             flow.sanitizeCode()
@@ -81,7 +88,6 @@ struct SignInPanel: View {
             ZStack(alignment: .top) {
                 switch flow.step {
                 case .identify: identifyStep.transition(.opacity)
-                case .verify: verifyStep.transition(.opacity)
                 case .code: codeStep.transition(.opacity)
                 case .create: createStep.transition(.opacity)
                 }
@@ -118,17 +124,76 @@ struct SignInPanel: View {
     private var title: String {
         switch flow.step {
         case .identify: "Sign in or join"
-        case .verify: flow.primaryMethod == .smsCode ? "Sign in with your phone" : "Welcome back"
         case .code: "Enter your code"
         case .create: "Create your account"
         }
     }
 
-    // MARK: Step 1 — who are you
+    // MARK: Step 1 — email + password, or phone
 
     private var identifyStep: some View {
         VStack(spacing: 12) {
-            fieldBox(focused: focus == .identifier) {
+            VStack(spacing: flow.showsPasswordField ? 12 : 0) {
+                identifierField
+                    .matchedGeometryEffect(id: "field", in: morph)
+                inlinePassword
+            }
+            .animation(Motion.choose(Motion.welcomePanel, calm: calm), value: flow.showsPasswordField)
+            if flow.primaryAction == .textCode {
+                Text("We'll text a 6-digit code to this number.")
+                    .font(Typo.secondary)
+                    .foregroundStyle(secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
+                    .transition(.opacity)
+            }
+            noticeLine
+            primaryButton(primaryLabel, enabled: flow.canSubmitIdentifier) { submitIdentifier() }
+            if flow.showsPasswordField {
+                VStack(spacing: 0) {
+                    Button("Email me a code instead") { run { await flow.sendEmailCode(auth: auth) } }
+                        .buttonStyle(PanelTextButtonStyle())
+                    Button("Forgot password?") { run { await flow.sendReset(auth: auth) } }
+                        .buttonStyle(PanelTextButtonStyle())
+                }
+                .disabled(flow.isWorking)
+                .transition(.opacity)
+            }
+            linkButton(lead: "New here? ", action: "Create an account") { flow.goToCreate() }
+        }
+        .animation(Motion.choose(Motion.fade, calm: calm), value: flow.primaryAction)
+    }
+
+    private var primaryLabel: String {
+        switch flow.primaryAction {
+        case .signIn: "Sign in"
+        case .textCode: "Text me a code"
+        case .proceed: "Continue"
+        }
+    }
+
+    private func submitIdentifier() {
+        run {
+            if await flow.submitIdentifier(auth: auth) { focus = .password }
+        }
+    }
+
+    /// Always in the hierarchy so iOS Passwords can fill email and password together from one
+    /// pick; collapsed to nothing (and out of reach of touch and VoiceOver) until it's needed.
+    private var inlinePassword: some View {
+        let visible = flow.showsPasswordField
+        return passwordField(text: $flow.password, field: .password, content: .password, submit: .go) {
+            submitIdentifier()
+        }
+        .frame(height: visible ? nil : 1, alignment: .top)
+        .clipped()
+        .opacity(visible ? 1 : 0.011)
+        .allowsHitTesting(visible)
+        .accessibilityHidden(!visible)
+    }
+
+    private var identifierField: some View {
+        fieldBox(focused: focus == .identifier) {
                 HStack(spacing: 10) {
                     TextField("", text: $flow.identifier, prompt: prompt("Email or phone number"))
                         .textContentType(.username)
@@ -136,8 +201,14 @@ struct SignInPanel: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .focused($focus, equals: .identifier)
-                        .submitLabel(.continue)
-                        .onSubmit { flow.continueFromIdentifier() }
+                        .submitLabel(flow.primaryAction == .signIn ? .next : .continue)
+                        .onSubmit {
+                            if flow.primaryAction == .signIn, flow.password.isEmpty {
+                                focus = .password
+                            } else {
+                                submitIdentifier()
+                            }
+                        }
                         .accessibilityLabel("Email or phone number")
                     if let icon = identityIcon {
                         Image(systemName: icon)
@@ -149,13 +220,6 @@ struct SignInPanel: View {
                 }
                 .animation(Motion.fade, value: identityIcon)
             }
-            .matchedGeometryEffect(id: "field", in: morph)
-            noticeLine
-            primaryButton("Continue", enabled: flow.identity != .empty) {
-                flow.continueFromIdentifier()
-            }
-            linkButton(lead: "New here? ", action: "Create an account") { flow.goToCreate() }
-        }
     }
 
     private var identityIcon: String? {
@@ -163,70 +227,6 @@ struct SignInPanel: View {
         case .email, .partialEmail: "envelope"
         case .phone, .partialPhone: "phone"
         default: nil
-        }
-    }
-
-    // MARK: Step 2 — prove it's you
-
-    private var verifyStep: some View {
-        VStack(spacing: 12) {
-            identityChip(SignInFlow.display(flow.identity))
-            switch flow.primaryMethod {
-            case .password: passwordMethod
-            case .smsCode, .emailCode: smsMethod
-            }
-            ForEach(flow.alternativeMethods, id: \.self) { method in
-                alternative(method)
-            }
-            if flow.primaryMethod == .password {
-                Button("Forgot password?") { run { await flow.sendReset(auth: auth) } }
-                    .buttonStyle(PanelTextButtonStyle())
-                    .disabled(flow.isWorking)
-            }
-            linkButton(lead: "No account? ", action: "Create one") { flow.goToCreate() }
-        }
-    }
-
-    @ViewBuilder
-    private var passwordMethod: some View {
-        // Lets iOS Passwords pair the saved email with the password below.
-        TextField("", text: .constant(SignInFlow.display(flow.identity)))
-            .textContentType(.username)
-            .frame(width: 1, height: 1)
-            .opacity(0.01)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-        passwordField(text: $flow.password, field: .password, content: .password, submit: .go) {
-            run { await flow.signIn(auth: auth) }
-        }
-        .matchedGeometryEffect(id: "field", in: morph)
-        noticeLine
-        primaryButton("Sign in", enabled: !flow.password.isEmpty) {
-            run { await flow.signIn(auth: auth) }
-        }
-    }
-
-    @ViewBuilder
-    private var smsMethod: some View {
-        Text("We'll text a 6-digit code to this number.")
-            .font(Typo.secondary)
-            .foregroundStyle(secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        noticeLine
-        primaryButton("Text me a code", enabled: true) {
-            run { await flow.sendPhoneCode(auth: auth) }
-        }
-    }
-
-    @ViewBuilder
-    private func alternative(_ method: SignInFlow.Method) -> some View {
-        switch method {
-        case .emailCode:
-            Button("Email me a code instead") { run { await flow.sendEmailCode(auth: auth) } }
-                .buttonStyle(PanelTextButtonStyle())
-                .disabled(flow.isWorking)
-        case .password, .smsCode:
-            EmptyView()
         }
     }
 
@@ -274,12 +274,11 @@ struct SignInPanel: View {
                 }
             }
             textField("Email", text: $flow.newEmail, field: .email, content: .username, keyboard: .emailAddress) {
-                focus = .newPassword
+                focus = nil
+                newPasswordFocused = true
             }
             .matchedGeometryEffect(id: "field", in: morph)
-            passwordField(text: $flow.newPassword, field: .newPassword, content: .newPassword, submit: .join) {
-                run { await flow.createAccount(auth: auth) }
-            }
+            newPasswordBox
             noticeLine
             primaryButton("Create account", enabled: flow.canCreate) {
                 run { await flow.createAccount(auth: auth) }
@@ -388,26 +387,35 @@ struct SignInPanel: View {
         }
     }
 
-    private func identityChip(_ text: String) -> some View {
-        HStack(spacing: 8) {
-            Text(text)
-                .font(Typo.font(14, .regular, relativeTo: .subheadline))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Button("Edit") { flow.editIdentifier() }
-                .font(Typo.font(14, .medium, relativeTo: .subheadline))
-                .foregroundStyle(.white)
-                .underline()
+    /// New password with the studio's rules, so a suggested strong password always qualifies.
+    private var newPasswordBox: some View {
+        fieldBox(focused: newPasswordFocused) {
+            HStack(spacing: 8) {
+                NewPasswordField(
+                    text: $flow.newPassword,
+                    isFocused: $newPasswordFocused,
+                    revealed: showsPassword
+                ) {
+                    run { await flow.createAccount(auth: auth) }
+                }
+                .frame(minHeight: 44)
+
+                Button {
+                    showsPassword.toggle()
+                    newPasswordFocused = true
+                } label: {
+                    Image(systemName: showsPassword ? "eye.slash" : "eye")
+                        .font(.system(size: 16))
+                        .foregroundStyle(secondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                        .contentTransition(.symbolEffect(.replace))
+                }
                 .buttonStyle(.plain)
-                .frame(minHeight: 32)
-                .accessibilityLabel("Edit \(text)")
+                .padding(.trailing, -10)
+                .accessibilityLabel(showsPassword ? "Hide password" : "Show password")
+            }
         }
-        .padding(.leading, 14)
-        .padding(.trailing, 12)
-        .padding(.vertical, 2)
-        .background(Color.white.opacity(0.14), in: Capsule())
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func primaryButton(_ label: String, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -473,9 +481,14 @@ struct SignInPanel: View {
             guard flow.isExpanded else { return }
             switch flow.step {
             case .identify: focus = .identifier
-            case .verify: focus = flow.primaryMethod == .password ? .password : nil
             case .code: focus = .code
-            case .create: focus = flow.firstName.isEmpty ? .firstName : .newPassword
+            case .create:
+                if flow.firstName.isEmpty {
+                    focus = .firstName
+                } else {
+                    focus = nil
+                    newPasswordFocused = true
+                }
             }
         }
     }

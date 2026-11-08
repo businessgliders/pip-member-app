@@ -131,6 +131,8 @@ enum Motion {
     static let heroSlideInterval: Double = 6
     static let heroSlideChange: Animation = .easeInOut(duration: longest)
     static let heroTextDelay: Double = 0.2
+    /// Push-in and auto-advance wait this long after Home appears, so they never run during a tab switch.
+    static let heroStartDelay: Double = 0.4
     static let sectionStagger: Double = 0.07
 
     // Skeleton shimmer

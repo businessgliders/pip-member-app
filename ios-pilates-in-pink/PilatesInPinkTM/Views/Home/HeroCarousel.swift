@@ -4,21 +4,28 @@ struct HeroSlide: Identifiable {
     enum Action { case classes(ClassFamily?), me }
     let id: Int
     let image: String
+    /// The subject of the photo (0–1 in the photo): kept in frame however the hero is shaped.
+    let focus: UnitPoint
     let headline: String
     let subtitle: String
     let button: String
     let action: Action
 
     static let all: [HeroSlide] = [
-        HeroSlide(id: 0, image: "hero_1", headline: "Welcome to\nPilates in Pink™",
+        // Neon "P" on the pink wall.
+        HeroSlide(id: 0, image: "hero_1", focus: UnitPoint(x: 0.5, y: 0.42), headline: "Welcome to\nPilates in Pink™",
                   subtitle: "Brampton's reformer studio — book in seconds.", button: "Book a class", action: .classes(nil)),
-        HeroSlide(id: 1, image: "hero_2", headline: "Find your reformer",
+        // Arched room: instructor and client.
+        HeroSlide(id: 1, image: "hero_2", focus: UnitPoint(x: 0.5, y: 0.5), headline: "Find your reformer",
                   subtitle: "Choose your exact spot in the room.", button: "See the schedule", action: .classes(nil)),
-        HeroSlide(id: 2, image: "hero_3", headline: "New to reformer?",
+        // Instructor's face and the neon logo.
+        HeroSlide(id: 2, image: "hero_3", focus: UnitPoint(x: 0.5, y: 0.3), headline: "New to reformer?",
                   subtitle: "Start with an Intro Class. We'll guide every move.", button: "Intro classes", action: .classes(.intro)),
-        HeroSlide(id: 3, image: "hero_4", headline: "Bring a friend",
+        // Three faces down the left side.
+        HeroSlide(id: 3, image: "hero_4", focus: UnitPoint(x: 0.35, y: 0.52), headline: "Bring a friend",
                   subtitle: "Everything's better together. Guest passes live in your profile.", button: "Learn more", action: .me),
-        HeroSlide(id: 4, image: "hero_5", headline: "Core in Blush",
+        // "Core on fire, Confidence Higher".
+        HeroSlide(id: 4, image: "hero_5", focus: UnitPoint(x: 0.5, y: 0.42), headline: "Core in Blush",
                   subtitle: "Our signature core class, all week long.", button: "Find a class", action: .classes(.core))
     ]
 }
@@ -42,18 +49,25 @@ struct HeroCarousel: View {
     @State private var isTouching = false
     @State private var lastChange = Date()
     @State private var swipes = 0
+    /// The slide fading out during a cross-fade; only it and the current slide are drawn.
+    @State private var outgoing: Int?
     private let slides = HeroSlide.all
 
     var body: some View {
         ZStack {
             ForEach(slides) { slide in
-                let isCurrent = slide.id == index
-                slideView(slide)
-                    .opacity(isCurrent ? 1 : 0)
-                    .allowsHitTesting(isCurrent)
-                    .accessibilityHidden(!isCurrent)
+                if slide.id == index || slide.id == outgoing {
+                    let isCurrent = slide.id == index
+                    slideView(slide)
+                        .opacity(isCurrent ? 1 : 0)
+                        .allowsHitTesting(isCurrent)
+                        .accessibilityHidden(!isCurrent)
+                }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Touches (and the swipe) stay inside the hero's own frame.
+        .clipped()
         .contentShape(Rectangle())
         .simultaneousGesture(swipe)
         .overlay(alignment: fold == nil ? .bottom : .bottomTrailing) {
@@ -61,21 +75,34 @@ struct HeroCarousel: View {
                 .padding(.bottom, Theme.sheetRadius + 14)
                 .padding(.trailing, fold == nil ? 0 : 24)
         }
-        .onAppear {
-            isZooming = true
-            textIndex = index
+        .onAppear { textIndex = index }
+        .onDisappear {
+            // Stop the push-in where it is; it restarts after the next appearance settles.
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { isZooming = false }
         }
-        .onChange(of: index) { _, newValue in
+        .onChange(of: index) { oldValue, newValue in
             lastChange = Date()
+            outgoing = oldValue
             Task {
                 try? await Task.sleep(for: .seconds(Motion.heroTextDelay))
                 withAnimation(Motion.choose(Motion.easeLong, calm: calm)) { textIndex = newValue }
+                try? await Task.sleep(for: .seconds(Motion.longest))
+                if outgoing == oldValue { outgoing = nil }
             }
         }
         .onChange(of: isScrolling) { _, _ in lastChange = Date() }
+        // Push-in and auto-advance wait until the tab switch has settled; SwiftUI cancels
+        // this task when Home disappears.
         .task {
+            try? await Task.sleep(for: .seconds(Motion.heroStartDelay))
+            guard !Task.isCancelled else { return }
+            isZooming = true
+            lastChange = Date()
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(0.5))
+                guard !Task.isCancelled else { break }
                 guard !isTouching, !isScrolling,
                       Date().timeIntervalSince(lastChange) >= Motion.heroSlideInterval else { continue }
                 show((index + 1) % slides.count)
@@ -111,12 +138,12 @@ struct HeroCarousel: View {
     private func slideView(_ slide: HeroSlide) -> some View {
         if let fold {
             ZStack(alignment: .topLeading) {
-                StudioPhoto(name: slide.image, tone: .deep)
+                StudioPhoto(name: slide.image, focus: slide.focus, tone: .deep)
                     .blur(radius: 28)
                     .overlay(Color.black.opacity(0.42))
                 HStack(spacing: 0) {
-                    StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
-                        .scaleEffect(zoomed(slide))
+                    StudioPhoto(name: slide.image, focus: slide.focus, tone: .deep, fadeIn: true)
+                        .scaleEffect(zoomed(slide), anchor: UnitPoint(x: slide.focus.x, y: slide.focus.y))
                         .animation(.easeInOut(duration: Motion.heroPushInDuration), value: index)
                         .animation(.easeInOut(duration: Motion.heroPushInDuration), value: isZooming)
                         .frame(width: fold.lowerBound)
@@ -133,8 +160,9 @@ struct HeroCarousel: View {
             .clipped()
         } else {
             ZStack(alignment: .bottomLeading) {
-                StudioPhoto(name: slide.image, tone: .deep, fadeIn: true)
+                StudioPhoto(name: slide.image, focus: slide.focus, tone: .deep, fadeIn: true)
                     .scaleEffect(zoomed(slide))
+                    .clipped()
                     .animation(.easeInOut(duration: Motion.heroPushInDuration), value: index)
                     .animation(.easeInOut(duration: Motion.heroPushInDuration), value: isZooming)
                 LinearGradient(

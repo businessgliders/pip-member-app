@@ -4,13 +4,18 @@ import UIKit
 /// A studio photo from the asset catalog. Tries `name`, then each of `fallbacks`; if none
 /// exists, draws a warm blush-to-cream gradient with soft grain so screens still feel finished.
 /// `alignment` decides which part of an aspect-filled photo stays in view (`.top` keeps faces
-/// and raised arms).
+/// and raised arms). `focus` (a point in the photo, 0–1) instead centres that subject as far as
+/// the crop allows, so it stays in frame in any shape — tall, wide or the Duo's half pane.
+///
+/// Always `Color.clear.overlay { photo }.clipped()`: the photo never changes the view's size,
+/// so it can't push its container wider or taller than the space it was given.
 struct StudioPhoto: View {
     enum Tone { case light, deep }
 
     let name: String
     var fallbacks: [String] = []
     var alignment: Alignment = .center
+    var focus: UnitPoint? = nil
     var tone: Tone = .light
     var fadeIn: Bool = false
     @State private var isVisible = false
@@ -23,9 +28,13 @@ struct StudioPhoto: View {
         Color.clear
             .overlay(alignment: alignment) {
                 if let image {
-                    Image(uiImage: image)
-                        .resizable()
-                        .scaledToFill()
+                    if let focus {
+                        FocusedFill(image: image, focus: focus)
+                    } else {
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
+                    }
                 } else {
                     PlaceholderArt(seed: name, tone: tone)
                 }
@@ -37,6 +46,27 @@ struct StudioPhoto: View {
                 withAnimation(.easeInOut(duration: Motion.longest)) { isVisible = true }
             }
             .accessibilityHidden(true)
+    }
+}
+
+/// Aspect-fill that keeps `focus` as close to the centre as the crop allows (never showing an edge).
+private struct FocusedFill: View {
+    let image: UIImage
+    let focus: UnitPoint
+
+    var body: some View {
+        GeometryReader { proxy in
+            let box = proxy.size
+            let source = image.size
+            let scale = max(box.width / max(source.width, 1), box.height / max(source.height, 1))
+            let drawn = CGSize(width: source.width * scale, height: source.height * scale)
+            let x = min(0, max(box.width - drawn.width, box.width / 2 - focus.x * drawn.width))
+            let y = min(0, max(box.height - drawn.height, box.height / 2 - focus.y * drawn.height))
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: drawn.width, height: drawn.height)
+                .offset(x: x, y: y)
+        }
     }
 }
 

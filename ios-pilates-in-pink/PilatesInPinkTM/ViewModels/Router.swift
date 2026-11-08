@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftUI
 
 enum AppTab: Int, CaseIterable, Hashable {
     case home, classes, card, me
@@ -33,7 +34,13 @@ enum AppRoute: Hashable {
 
 @Observable
 final class Router {
-    var selectedTab: AppTab = .home
+    /// Only written through `select(_:source:)`, so every change is logged with who made it.
+    private(set) var selectedTab: AppTab = .home
+    /// When the member last switched tabs from the tab bar / sidebar. Programmatic switches
+    /// that arrive while that transition is still running are ignored, so nothing can bounce
+    /// the selection back mid-animation.
+    @ObservationIgnored private var lastTabBarSwitch = Date.distantPast
+    @ObservationIgnored private let transitionGuard: TimeInterval = 0.6
     var homePath: [AppRoute] = []
     var classesPath: [AppRoute] = []
     var cardPath: [AppRoute] = []
@@ -47,12 +54,32 @@ final class Router {
     /// split (regular) layouts so it survives folds and rotations.
     var classesSelection: ClassRoute?
 
-    func select(_ tab: AppTab) {
-        if tab == selectedTab {
-            popToRoot(tab)
-        } else {
-            selectedTab = tab
+    enum TabSource: String {
+        case tabBar, openClasses, openMe
+    }
+
+    /// The single place `selectedTab` changes.
+    @discardableResult
+    func select(_ tab: AppTab, source: TabSource) -> Bool {
+        let old = selectedTab
+        if source == .tabBar {
+            lastTabBarSwitch = Date()
+        } else if Date().timeIntervalSince(lastTabBarSwitch) < transitionGuard {
+            print("[Tab] ignored \(old) -> \(tab) from \(source.rawValue): tab-bar switch in flight")
+            return false
         }
+        print("[Tab] \(old) -> \(tab) from \(source.rawValue)")
+        guard tab != old else { return true }
+        selectedTab = tab
+        return true
+    }
+
+    /// Binding for the TabView: the tab bar's own selection, logged as `.tabBar`.
+    var tabBarSelection: Binding<AppTab> {
+        Binding(
+            get: { self.selectedTab },
+            set: { self.select($0, source: .tabBar) }
+        )
     }
 
     func popToRoot(_ tab: AppTab) {
@@ -68,13 +95,13 @@ final class Router {
 
     /// Opens the Classes tab, optionally filtered to one class family (nil clears nothing).
     func openClasses(family: ClassFamily? = nil) {
+        guard select(.classes, source: .openClasses) else { return }
         if let family {
             pendingClassFilter = family
             pendingFilterToken += 1
         }
         classesPath = []
         classesSelection = nil
-        selectedTab = .classes
     }
 
     func consumePendingFilter() -> ClassFamily? {
@@ -92,7 +119,7 @@ final class Router {
     }
 
     func openMe(_ route: AppRoute? = nil) {
-        selectedTab = .me
+        guard select(.me, source: .openMe) else { return }
         if let route { mePath = [route] }
     }
 }

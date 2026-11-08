@@ -7,7 +7,8 @@ import SwiftUI
 /// everything the member has typed and the step they're on.
 @Observable
 final class SignInFlow {
-    enum Step: Hashable { case identify, verify, code, create }
+    /// Email + password happen together on `.identify`; one-time codes get their own step.
+    enum Step: Hashable { case identify, code, create }
 
     enum Notice: Equatable {
         case error(String)
@@ -25,9 +26,8 @@ final class SignInFlow {
         case unknown
     }
 
-    /// Ways to prove it's you on step 2. A `.passkey` case slots in here once passkeys
-    /// are switched on; the panel renders whatever this list contains.
-    enum Method: Hashable { case password, emailCode, smsCode }
+    /// What the main button on step 1 does right now.
+    enum PrimaryAction: Equatable { case signIn, textCode, proceed }
 
     // Panel
     var isExpanded = false
@@ -55,14 +55,25 @@ final class SignInFlow {
 
     var identity: Identity { Self.parse(identifier) }
 
-    var primaryMethod: Method {
-        if case .phone = identity { return .smsCode }
-        return .password
+    /// The password field shows as soon as it looks like an email — or iOS has filled it.
+    var showsPasswordField: Bool {
+        identifier.contains("@") || !password.isEmpty
     }
 
-    var alternativeMethods: [Method] {
-        if case .email = identity { return [.emailCode] }
-        return []
+    var primaryAction: PrimaryAction {
+        switch identity {
+        case .phone, .partialPhone: return .textCode
+        default: return showsPasswordField ? .signIn : .proceed
+        }
+    }
+
+    /// Whether the main button on step 1 can be pressed. Autofill only ever enables it.
+    var canSubmitIdentifier: Bool {
+        switch primaryAction {
+        case .signIn: if case .email = identity { return !password.isEmpty } else { return false }
+        case .textCode: if case .phone = identity { return true } else { return false }
+        case .proceed: return identity != .empty
+        }
     }
 
     var canCreate: Bool {
@@ -148,15 +159,6 @@ final class SignInFlow {
         }
     }
 
-    func editIdentifier() {
-        animate {
-            stack = [.identify]
-            password = ""
-            code = ""
-            notice = nil
-        }
-    }
-
     func goToCreate() {
         if newEmail.isEmpty, case .email(let email) = identity { newEmail = email }
         push(.create)
@@ -164,11 +166,26 @@ final class SignInFlow {
 
     // MARK: Step 1
 
-    func continueFromIdentifier() {
+    /// The main button / return key on step 1. Returns `true` when the password is still
+    /// missing, so the view can move focus to it.
+    @discardableResult
+    func submitIdentifier(auth: AuthStore) async -> Bool {
+        switch identity {
+        case .email:
+            if password.isEmpty { return true }
+            await signIn(auth: auth)
+        case .phone:
+            await sendPhoneCode(auth: auth)
+        default:
+            showIdentifierProblem()
+        }
+        return false
+    }
+
+    private func showIdentifierProblem() {
         switch identity {
         case .email, .phone:
-            password = ""
-            push(.verify)
+            break
         case .empty:
             setNotice(.error("Enter your email or mobile number to continue."))
         case .partialEmail:
@@ -180,7 +197,7 @@ final class SignInFlow {
         }
     }
 
-    // MARK: Step 2
+    // MARK: Sign in
 
     func signIn(auth: AuthStore) async {
         guard case .email(let email) = identity, !password.isEmpty, !isWorking else { return }
@@ -189,7 +206,8 @@ final class SignInFlow {
         defer { isWorking = false }
         do {
             try await auth.signIn(email: email, password: password)
-            // Auth state flips to signed in; the root cross-fades to Home.
+            // Auth state flips to signed in; the root cross-fades to Home. The fields stay
+            // filled until the panel is gone, so iOS can offer to save the password.
         } catch {
             let lower = error.localizedDescription.lowercased()
             if lower.contains("invalid login") || lower.contains("invalid credentials") {
@@ -202,7 +220,11 @@ final class SignInFlow {
 
     func sendEmailCode(auth: AuthStore, isResend: Bool = false) async {
         let target = isResend ? (codeIdentity ?? identity) : identity
-        guard case .email(let email) = target, !isWorking else { return }
+        guard !isWorking else { return }
+        guard case .email(let email) = target else {
+            showIdentifierProblem()
+            return
+        }
         isWorking = true
         setNotice(nil)
         defer { isWorking = false }
@@ -252,7 +274,11 @@ final class SignInFlow {
     }
 
     func sendReset(auth: AuthStore) async {
-        guard case .email(let email) = identity, !isWorking else { return }
+        guard !isWorking else { return }
+        guard case .email(let email) = identity else {
+            showIdentifierProblem()
+            return
+        }
         isWorking = true
         setNotice(nil)
         defer { isWorking = false }
@@ -319,9 +345,14 @@ final class SignInFlow {
                 animate {
                     identifier = email
                     password = ""
-                    newPassword = ""
                     stack = [.identify]
                     notice = .info("Check your inbox to confirm your email, then sign in.")
+                }
+                // The new password leaves the screen still filled in, so iOS can offer to save
+                // it; only then is it cleared. It's never stored by the app.
+                Task {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    if step != .create { newPassword = "" }
                 }
             }
         } catch {

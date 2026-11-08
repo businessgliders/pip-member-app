@@ -7,7 +7,8 @@ struct MainTabView: View {
     @Environment(\.horizontalSizeClass) private var hSize
 
     var body: some View {
-        TabView(selection: $router.selectedTab) {
+        // The tab bar writes the selection only through the router, which logs every change.
+        TabView(selection: router.tabBarSelection) {
             Tab(value: AppTab.home) {
                 NavigationStack(path: $router.homePath) {
                     HomeView().appDestinations()
