@@ -18,9 +18,11 @@ struct ContentView: View {
                 WelcomeView()
                     .transition(.opacity)
             case .signedIn:
-                MainTabView()
-                    .id(auth.userId)
-                    .transition(.opacity)
+                if let userId = auth.userId {
+                    SignedInRoot(userId: userId, isFresh: auth.isFreshSignIn)
+                        .id(userId)
+                        .transition(.opacity)
+                }
             }
 
             if showsSplash {
@@ -36,6 +38,124 @@ struct ContentView: View {
         .environment(handoff)
         .modifier(CalmMotionProvider())
         .tint(Theme.ink)
+    }
+}
+
+/// Signed in: checks whether the member still needs setup (C–F), then shows Home, with the
+/// one-time welcome finale (G) over it after a fresh sign-in or after setup.
+struct SignedInRoot: View {
+    let userId: UUID
+    let isFresh: Bool
+
+    private enum Stage: Equatable { case checking, onboarding(OnboardingView.Step), ready }
+
+    @Environment(\.calmMotion) private var calm
+    @State private var stage: Stage
+    @State private var profile: MemberProfile?
+    @State private var showsFinale = false
+    /// Home sits slightly small and blurred under the finale, then settles as it leaves.
+    @State private var homeSettled = true
+
+    init(userId: UUID, isFresh: Bool) {
+        self.userId = userId
+        self.isFresh = isFresh
+        let onboarded = UserDefaults.standard.bool(forKey: Self.onboardedKey(userId))
+        _stage = State(initialValue: (!isFresh && onboarded) ? .ready : .checking)
+    }
+
+    private static func onboardedKey(_ id: UUID) -> String { "onboarded.\(id.uuidString.lowercased())" }
+    private static func finaleKey(_ id: UUID) -> String { "finaleShown.\(id.uuidString.lowercased())" }
+
+    var body: some View {
+        ZStack {
+            switch stage {
+            case .checking:
+                Group {
+                    if isFresh {
+                        ZStack {
+                            AuthBackdrop()
+                            ProgressView().tint(Theme.cream)
+                        }
+                    } else {
+                        SplashStill()
+                    }
+                }
+                .transition(.opacity)
+                .task { await check() }
+            case .onboarding(let start):
+                OnboardingView(profile: profile, userId: userId, start: start) {
+                    finishOnboarding()
+                }
+                .transition(.opacity)
+            case .ready:
+                MainTabView()
+                    .scaleEffect(homeSettled || calm ? 1 : 0.94)
+                    .blur(radius: homeSettled || calm ? 0 : 12)
+                    .transition(.opacity)
+            }
+
+            if showsFinale {
+                FinaleView {
+                    withAnimation(.easeInOut(duration: Motion.finaleExit)) { homeSettled = true }
+                } onFinish: {
+                    showsFinale = false
+                }
+                .zIndex(2)
+                .transition(.opacity)
+            }
+        }
+        .animation(Motion.fade, value: stage)
+    }
+
+    private func check() async {
+        let service = StudioService()
+        do {
+            let fetched = try await service.profile()
+            profile = fetched
+            if fetched?.needsOnboarding == true {
+                if let pending = OnboardingHandoff.pending {
+                    // Just created an account with name + consent: save it, start at the photo.
+                    OnboardingHandoff.pending = nil
+                    try? await service.updateProfile(firstName: pending.firstName,
+                                                     lastName: pending.lastName,
+                                                     marketing: pending.marketing)
+                    stage = .onboarding(.photo)
+                } else {
+                    stage = .onboarding(.name)
+                }
+                return
+            }
+            if let pending = OnboardingHandoff.pending {
+                OnboardingHandoff.pending = nil
+                try? await service.updateProfile(firstName: pending.firstName,
+                                                 lastName: pending.lastName,
+                                                 marketing: pending.marketing)
+                stage = .onboarding(.photo)
+                return
+            }
+            UserDefaults.standard.set(true, forKey: Self.onboardedKey(userId))
+        } catch {
+            print("Profile check failed: \(error.localizedDescription)")
+        }
+        becomeReady(withFinale: isFresh && !UserDefaults.standard.bool(forKey: Self.finaleKey(userId)))
+    }
+
+    private func finishOnboarding() {
+        UserDefaults.standard.set(true, forKey: Self.onboardedKey(userId))
+        becomeReady(withFinale: true)
+    }
+
+    private func becomeReady(withFinale: Bool) {
+        if withFinale {
+            UserDefaults.standard.set(true, forKey: Self.finaleKey(userId))
+            var instant = Transaction()
+            instant.disablesAnimations = true
+            withTransaction(instant) {
+                homeSettled = false
+                showsFinale = true
+            }
+        }
+        stage = .ready
     }
 }
 

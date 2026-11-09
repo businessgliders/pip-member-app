@@ -9,22 +9,30 @@ final class AuthStore {
 
     private(set) var phase: Phase = .loading
     private(set) var user: User?
+    /// True when this signed-in phase began with a sign-in on this screen (not a session
+    /// restored at launch). Drives the onboarding check and the finale.
+    private(set) var isFreshSignIn = false
     private var listener: Task<Void, Never>?
 
     init() {
         listener = Task { [weak self] in
             for await change in SupabaseService.client.auth.authStateChanges {
                 guard let self else { return }
-                self.apply(session: change.session)
+                self.apply(session: change.session, event: change.event)
             }
         }
     }
 
-    private func apply(session: Session?) {
+    private func apply(session: Session?, event: AuthChangeEvent) {
         if let session, !session.isExpired {
+            if phase != .signedIn || user?.id != session.user.id {
+                // A refreshed token on launch is a restored session, not a sign-in.
+                isFreshSignIn = event == .signedIn
+            }
             user = session.user
             phase = .signedIn
         } else {
+            isFreshSignIn = false
             user = nil
             phase = .signedOut
         }

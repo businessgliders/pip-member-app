@@ -156,6 +156,10 @@ struct AccountDetailsView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(StudioStore.self) private var store
     @State private var isConfirmingSignOut = false
+    @State private var choosesPhoto = false
+    @State private var isUploadingPhoto = false
+    @State private var editsBirthday = false
+    @State private var notice: String?
 
     var body: some View {
         ScrollView {
@@ -163,6 +167,65 @@ struct AccountDetailsView: View {
                 PushedHeader(title: "Account")
                     .padding(.bottom, 8)
                 let member = auth.identity(with: store.profile)
+                VStack(spacing: 0) {
+                    Button { choosesPhoto = true } label: {
+                        HStack(spacing: 14) {
+                            MemberAvatar(path: store.profile?.photoUrl) {
+                                Text(member.initials)
+                                    .font(Typo.font(17, .light, relativeTo: .headline))
+                                    .foregroundStyle(Theme.onPink)
+                                    .frame(width: 44, height: 44)
+                                    .background(Theme.blush, in: Circle())
+                            }
+                            .frame(width: 44, height: 44)
+                            .overlay {
+                                if isUploadingPhoto {
+                                    Circle().fill(.black.opacity(0.35))
+                                    ProgressView().tint(Theme.cream)
+                                }
+                            }
+                            Text("Change photo")
+                                .font(Typo.body)
+                                .foregroundStyle(Theme.ink)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .light))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        .frame(minHeight: 64)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableCardStyle())
+                    .disabled(isUploadingPhoto)
+                    Hairline()
+                    Button { editsBirthday = true } label: {
+                        HStack(alignment: .firstTextBaseline, spacing: 16) {
+                            EyebrowText("Birthday")
+                            Spacer()
+                            Text(store.profile?.birthdayDate?.formatted(.dateTime.month(.wide).day().year()) ?? "Add")
+                                .font(Typo.body)
+                                .foregroundStyle(store.profile?.birthdayDate == nil ? Theme.secondaryText : Theme.ink)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 13, weight: .light))
+                                .foregroundStyle(Theme.secondaryText)
+                        }
+                        .frame(minHeight: 54)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableCardStyle())
+                    .accessibilityLabel("Edit birthday")
+                }
+                .padding(.horizontal, 18)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
+
+                if let notice {
+                    Text(notice)
+                        .font(Typo.secondary)
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 4)
+                        .transition(.opacity)
+                }
+
                 VStack(spacing: 0) {
                     row("First name", member.firstName.isEmpty ? "—" : member.firstName)
                     Hairline()
@@ -198,6 +261,33 @@ struct AccountDetailsView: View {
         .confirmationDialog("Sign out of Pilates in Pink™?", isPresented: $isConfirmingSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { Task { await auth.signOut() } }
             Button("Stay signed in", role: .cancel) {}
+        }
+        .photoChooser(isPresented: $choosesPhoto) { image in upload(image) }
+        .sheet(isPresented: $editsBirthday) {
+            BirthdayEditor(initial: store.profile?.birthdayDate) {
+                await store.refreshProfile()
+            }
+            .presentationDetents([.medium])
+        }
+        .animation(Motion.fade, value: notice)
+    }
+
+    private func upload(_ image: UIImage) {
+        guard let userId = auth.userId, let jpeg = MemberPhoto.jpeg(from: image) else {
+            notice = "That photo didn't work — try another one."
+            return
+        }
+        isUploadingPhoto = true
+        notice = nil
+        Task {
+            defer { isUploadingPhoto = false }
+            do {
+                try await MemberPhoto.upload(jpeg, userId: userId)
+                await store.refreshProfile()
+            } catch {
+                print("Photo upload failed: \(error.localizedDescription)")
+                notice = "We couldn't upload your photo just now — please try again."
+            }
         }
     }
 
@@ -241,6 +331,73 @@ struct AccountDetailsView: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(minHeight: 54)
+    }
+}
+
+// MARK: - Birthday
+
+private struct BirthdayEditor: View {
+    let onSaved: () async -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var date: Date
+    @State private var isSaving = false
+    @State private var failed = false
+
+    init(initial: Date?, onSaved: @escaping () async -> Void) {
+        self.onSaved = onSaved
+        let fallback = Calendar(identifier: .gregorian).date(from: DateComponents(year: 1995, month: 1, day: 1)) ?? Date()
+        _date = State(initialValue: initial ?? fallback)
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                DatePicker("Birthday", selection: $date, in: ...Date(), displayedComponents: .date)
+                    .datePickerStyle(.wheel)
+                    .labelsHidden()
+                    .environment(\.locale, Locale(identifier: "en_US"))
+                if failed {
+                    Text("We couldn't save that just now — please try again.")
+                        .font(Typo.secondary)
+                        .foregroundStyle(Theme.ink)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
+            .background(Theme.background.ignoresSafeArea())
+            .navigationTitle("Birthday")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Button("Save", action: save)
+                    }
+                }
+            }
+        }
+    }
+
+    private func save() {
+        isSaving = true
+        failed = false
+        let value = OnboardingView.isoDay(date)
+        Task {
+            do {
+                try await StudioService().updateBirthday(value)
+                await onSaved()
+                dismiss()
+            } catch {
+                failed = true
+            }
+            isSaving = false
+        }
     }
 }
 

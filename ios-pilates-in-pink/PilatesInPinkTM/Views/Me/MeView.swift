@@ -89,15 +89,18 @@ struct MeView: View {
     private var profile: some View {
         let member = auth.identity(with: store.profile)
         return VStack(spacing: 12) {
-            Text(member.initials)
-                .font(Typo.font(36, .light, relativeTo: .largeTitle))
-                .foregroundStyle(Theme.onPink)
-                .frame(width: 104, height: 104)
-                .background(
-                    LinearGradient(colors: [Color(hex: 0xFBE0E2), Color(hex: 0xF7B1BD)], startPoint: .topLeading, endPoint: .bottomTrailing),
-                    in: Circle()
-                )
-                .accessibilityHidden(true)
+            MemberAvatar(path: store.profile?.photoUrl) {
+                Text(member.initials)
+                    .font(Typo.font(36, .light, relativeTo: .largeTitle))
+                    .foregroundStyle(Theme.onPink)
+                    .frame(width: 104, height: 104)
+                    .background(
+                        LinearGradient(colors: [Color(hex: 0xFBE0E2), Color(hex: 0xF7B1BD)], startPoint: .topLeading, endPoint: .bottomTrailing),
+                        in: Circle()
+                    )
+            }
+            .frame(width: 104, height: 104)
+            .accessibilityHidden(true)
             Text(member.displayName)
                 .font(Typo.font(30, .light, relativeTo: .largeTitle))
                 .foregroundStyle(Theme.ink)

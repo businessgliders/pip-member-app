@@ -115,6 +115,22 @@ enum Motion {
     /// Headline fading out while the keyboard is up (0.3s, as specified).
     static let welcomeKeyboardFade: Animation = .easeInOut(duration: 0.3)
 
+    // Sign-in & onboarding (full-screen steps)
+    /// Steps cross-fade and slide this far (12pt, as specified).
+    static let authStepSlide: CGFloat = 12
+    static let authStep: Animation = .easeInOut(duration: 0.45)
+    /// Wrong-code shake.
+    static let codeShake: Animation = .easeInOut(duration: 0.45)
+    /// "Resend code in 30s" (as specified).
+    static let codeResendSeconds = 30
+
+    // Finale (all values as specified)
+    static let finaleOpen: Double = 0.6
+    static let finaleWordStagger: Double = 0.25
+    static let finaleWordFade: Double = 0.35
+    static let finaleHold: Double = 0.8
+    static let finaleExit: Double = 0.7
+
     // Logo
     static let refreshTrace: Double = 1.2
     static let refreshTraceAnimation: Animation = .easeInOut(duration: refreshTrace)

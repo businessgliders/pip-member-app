@@ -47,6 +47,11 @@ enum ClassFamily: String, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// From a banner's `action_value`, e.g. "core".
+    static func from(key: String) -> ClassFamily? {
+        ClassFamily(rawValue: key.trimmingCharacters(in: .whitespaces).lowercased())
+    }
+
     static func from(code: String?, name: String?) -> ClassFamily? {
         if let code = code?.lowercased(), !code.isEmpty,
            let match = allCases.first(where: { code.hasPrefix($0.codePrefix) }) {

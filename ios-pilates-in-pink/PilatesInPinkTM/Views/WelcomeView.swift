@@ -2,7 +2,8 @@ import SwiftUI
 import UIKit
 
 /// Signed-out experience: logo at the top, the video open in the middle, and the headline
-/// grouped with the glass sign-in panel at the bottom.
+/// grouped with the LOG IN OR SIGN UP pill at the bottom. The pill opens the full-screen
+/// sign-in steps over the video.
 ///
 /// Layout rules: the video and gradient live in `.background` and never affect layout.
 /// The content is sized by the window's safe area only, and picks its layout from the window's
@@ -21,16 +22,15 @@ struct WelcomeView: View {
     @Environment(LogoHandoff.self) private var handoff
     @Environment(\.calmMotion) private var calm
     @Environment(\.scenePhase) private var scenePhase
-    @State private var flow = SignInFlow()
+    @State private var showsAuth = false
     @State private var isOnScreen = false
     @State private var showsBrandLabel = false
     @State private var showsHeadline = false
     @State private var showsSubline = false
     @State private var showsActions = false
-    @State private var keyboardVisible = false
 
     private var isPlaying: Bool {
-        isOnScreen && scenePhase == .active && !handoff.isSplashActive
+        isOnScreen && scenePhase == .active && !handoff.isSplashActive && !showsAuth
     }
 
     var body: some View {
@@ -42,12 +42,17 @@ struct WelcomeView: View {
             }
         }
         .background { backdrop }
-        .onAppear {
-            isOnScreen = true
-            flow.calm = calm
+        .overlay {
+            if showsAuth {
+                AuthFlowView {
+                    withAnimation(Motion.choose(Motion.ease, calm: calm)) { showsAuth = false }
+                }
+                .transition(.opacity)
+                .zIndex(1)
+            }
         }
+        .onAppear { isOnScreen = true }
         .onDisappear { isOnScreen = false }
-        .onChange(of: calm) { _, new in flow.calm = new }
         .task(id: handoff.isSplashActive) {
             // The splash logo has landed on the top mark: the label settles in beside it,
             // then the headline, subline and button fade up from the bottom.
@@ -60,14 +65,6 @@ struct WelcomeView: View {
             withAnimation(curve) { showsSubline = true }
             try? await Task.sleep(for: .seconds(Motion.welcomeEntranceStagger))
             withAnimation(curve) { showsActions = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { note in
-            let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect ?? .zero
-            guard frame.height > 120 else { return } // ignore the iPad hardware-keyboard bar
-            withAnimation(Motion.welcomeKeyboardFade) { keyboardVisible = true }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
-            withAnimation(Motion.welcomeKeyboardFade) { keyboardVisible = false }
         }
     }
 
@@ -93,14 +90,6 @@ struct WelcomeView: View {
         .ignoresSafeArea()
     }
 
-    /// Tapping the video (outside the panel) collapses it and puts the keyboard away.
-    private var videoTapCatcher: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture { flow.collapse() }
-            .accessibilityHidden(true)
-    }
-
     // MARK: Compact (portrait / narrow windows)
 
     private func compactLayout(_ proxy: GeometryProxy) -> some View {
@@ -121,8 +110,8 @@ struct WelcomeView: View {
                 // Bottom group: headline, subline, then the panel.
                 VStack(alignment: .leading, spacing: 0) {
                     headlineGroup
-                    SignInPanel(flow: flow)
-                        .padding(.top, keyboardVisible ? 0 : 28)
+                    signInPill
+                        .padding(.top, 28)
                         .riseIn(showsActions)
                 }
                 .padding(.horizontal, 24)
@@ -132,11 +121,9 @@ struct WelcomeView: View {
             }
             .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             .avoidingFold()
-            .background { videoTapCatcher }
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollIndicators(.hidden)
-        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: Wide (landscape, iPhone Duo inner, iPad, wide split screen)
@@ -160,7 +147,7 @@ struct WelcomeView: View {
                 FoldColumns(spacing: 48, gutter: 24, alignment: .bottom) {
                     headlineGroup
                 } trailing: {
-                    SignInPanel(flow: flow)
+                    signInPill
                         .riseIn(showsActions)
                         .frame(maxWidth: 400)
                         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -169,17 +156,14 @@ struct WelcomeView: View {
             }
             .padding(.horizontal, 32)
             .frame(maxWidth: .infinity, minHeight: proxy.size.height, alignment: .leading)
-            .background { videoTapCatcher }
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollIndicators(.hidden)
-        .scrollDismissesKeyboard(.interactively)
     }
 
     // MARK: Pieces
 
-    /// Headline + subline, left-aligned. Fades out (and gives up its height) while the
-    /// keyboard is up, and comes back when it hides.
+    /// Headline + subline, left-aligned.
     private var headlineGroup: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(Self.headline)
@@ -200,10 +184,18 @@ struct WelcomeView: View {
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .shadow(color: Theme.fixedInk.opacity(0.25), radius: 12, y: 2)
-        .opacity(keyboardVisible ? 0 : 1)
-        .frame(height: keyboardVisible ? 0 : nil, alignment: .bottom)
-        .accessibilityHidden(keyboardVisible)
         .allowsHitTesting(false)
+    }
+
+    /// The one entry point: opens the full-screen sign-in steps.
+    private var signInPill: some View {
+        Button {
+            withAnimation(Motion.choose(Motion.ease, calm: calm)) { showsAuth = true }
+        } label: {
+            Text("LOG IN OR SIGN UP")
+        }
+        .buttonStyle(CreamPillButtonStyle())
+        .sensoryFeedback(.impact(weight: .light), trigger: showsAuth) { _, new in new }
     }
 
     /// The white mark — where the splash logo lands on a cold launch.

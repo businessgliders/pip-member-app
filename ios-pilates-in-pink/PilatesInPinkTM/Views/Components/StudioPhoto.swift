@@ -18,10 +18,39 @@ struct StudioPhoto: View {
     var focus: UnitPoint? = nil
     var tone: Tone = .light
     var fadeIn: Bool = false
+    /// A downloaded photo to prefer over the bundled ones (cached on disk). While it loads the
+    /// gradient shows; if it fails, the bundled photo (`name`, then `fallbacks`) is used.
+    var remoteURL: URL? = nil
     @State private var isVisible = false
+    @State private var remote: RemoteState = .none
+
+    private enum RemoteState: Equatable {
+        case none, loading, loaded(UIImage), failed
+    }
 
     private var image: UIImage? {
-        ([name] + fallbacks).lazy.compactMap { UIImage(named: $0) }.first
+        if case .loaded(let image) = remote { return image }
+        if remote == .loading { return nil }
+        return ([name] + fallbacks).lazy.compactMap { UIImage(named: $0) }.first
+    }
+
+    init(name: String, fallbacks: [String] = [], alignment: Alignment = .center, focus: UnitPoint? = nil,
+         tone: Tone = .light, fadeIn: Bool = false, remoteURL: URL? = nil) {
+        self.name = name
+        self.fallbacks = fallbacks
+        self.alignment = alignment
+        self.focus = focus
+        self.tone = tone
+        self.fadeIn = fadeIn
+        self.remoteURL = remoteURL
+        // A photo already on disk shows on the very first frame.
+        if let remoteURL {
+            if let cached = ImageCache.shared.cached(remoteURL.absoluteString) {
+                _remote = State(initialValue: .loaded(cached))
+            } else {
+                _remote = State(initialValue: .loading)
+            }
+        }
     }
 
     var body: some View {
@@ -40,7 +69,20 @@ struct StudioPhoto: View {
                 }
             }
             .clipped()
+            .animation(.easeInOut(duration: Motion.longest), value: remote)
             .opacity(fadeIn ? (isVisible ? 1 : 0) : 1)
+            .task(id: remoteURL) {
+                guard let remoteURL else {
+                    remote = .none
+                    return
+                }
+                if case .loaded = remote { return }
+                if let downloaded = await ImageCache.shared.image(at: remoteURL) {
+                    remote = .loaded(downloaded)
+                } else if !Task.isCancelled {
+                    remote = .failed
+                }
+            }
             .onAppear {
                 guard fadeIn, !isVisible else { return }
                 withAnimation(.easeInOut(duration: Motion.longest)) { isVisible = true }

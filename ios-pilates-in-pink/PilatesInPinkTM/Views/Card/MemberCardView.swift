@@ -125,9 +125,19 @@ struct MemberCardView: View {
                 qr
                     .padding(.top, 26)
                 VStack(spacing: 8) {
-                    Text(member.shortName)
-                        .font(Typo.font(28, .light, relativeTo: .title))
-                        .foregroundStyle(Theme.fixedInk)
+                    HStack(spacing: 12) {
+                        MemberAvatar(path: store.profile?.photoUrl) {
+                            Text(member.initials)
+                                .font(Typo.font(15, .regular, relativeTo: .subheadline))
+                                .foregroundStyle(Theme.fixedInk)
+                                .frame(width: 40, height: 40)
+                                .background(Color(hex: 0xFBE0E2), in: Circle())
+                        }
+                        .frame(width: 40, height: 40)
+                        Text(member.shortName)
+                            .font(Typo.font(28, .light, relativeTo: .title))
+                            .foregroundStyle(Theme.fixedInk)
+                    }
                     Text(store.credits?.memberLabel ?? (store.hasLoadedCredits ? "NO ACTIVE MEMBERSHIP" : " "))
                         .font(Typo.font(12, .medium, relativeTo: .caption))
                         .tracking(1.8)

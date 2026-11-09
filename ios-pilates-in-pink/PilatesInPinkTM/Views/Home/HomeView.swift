@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @Environment(AuthStore.self) private var auth
     @Environment(StudioStore.self) private var store
+    @Environment(BannerStore.self) private var bannerStore
     @Environment(Router.self) private var router
     @Environment(\.horizontalSizeClass) private var hSize
     @Environment(LogoHandoff.self) private var handoff
@@ -13,18 +14,31 @@ struct HomeView: View {
     /// Sections fade and rise once, on first appearance only.
     @State private var revealStep = 0
     @State private var isScrolling = false
+    @State private var safariLink: SafariLink?
+
+    /// The studio's banners; the bundled welcome slide only before they've ever loaded.
+    private var slides: [HeroSlide] {
+        bannerStore.hasBanners ? bannerStore.banners.map(HeroSlide.init(banner:)) : HeroSlide.firstRun
+    }
 
     private var isRegular: Bool { hSize == .regular }
 
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                HeroCarousel(fold: fold.verticalFold(), isScrolling: isScrolling, onAction: handle)
-                    .containerRelativeFrame(.vertical) { height, _ in max(420, height * 0.55) }
-                    .overlay(alignment: .top) { topBar }
+                if slides.isEmpty {
+                    // No live banners: a compact cream header with the studio pill.
+                    topBar
+                        .padding(.bottom, 8)
+                    sheet
+                } else {
+                    HeroCarousel(fold: fold.verticalFold(), isScrolling: isScrolling, slides: slides, onAction: handle)
+                        .containerRelativeFrame(.vertical) { height, _ in max(420, height * 0.55) }
+                        .overlay(alignment: .top) { topBar }
 
-                sheet
-                    .padding(.top, -Theme.sheetRadius)
+                    sheet
+                        .padding(.top, -Theme.sheetRadius)
+                }
             }
         }
         .scrollIndicators(.hidden)
@@ -43,7 +57,12 @@ struct HomeView: View {
         }
         .background(Theme.background.ignoresSafeArea())
         .toolbar(.hidden, for: .navigationBar)
-        .logoRefreshable(topPadding: topBarTop + 54) { await store.refreshAll() }
+        .logoRefreshable(topPadding: topBarTop + 54) {
+            async let banners: Void = bannerStore.refresh()
+            await store.refreshAll()
+            await banners
+        }
+        .safariSheet($safariLink)
         .task(id: handoff.isSplashActive) { await revealSections() }
     }
 
@@ -59,6 +78,9 @@ struct HomeView: View {
         switch action {
         case .classes(let family): router.openClasses(family: family)
         case .me: router.openMe()
+        case .credits: router.openMe(.credits)
+        case .url(let url): safariLink = SafariLink(url: url)
+        case .none: break
         }
     }
 
@@ -68,9 +90,13 @@ struct HomeView: View {
         HStack(spacing: 10) {
             Button { router.openMe() } label: {
                 GlassCircle {
-                    Text(auth.identity(with: store.profile).initials)
-                        .font(Typo.font(15, .medium, relativeTo: .subheadline))
-                        .foregroundStyle(Theme.ink)
+                    MemberAvatar(path: store.profile?.photoUrl) {
+                        Text(auth.identity(with: store.profile).initials)
+                            .font(Typo.font(15, .medium, relativeTo: .subheadline))
+                            .foregroundStyle(Theme.ink)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .padding(store.profile?.photoUrl?.isEmpty == false ? 3 : 0)
                 }
             }
             .buttonStyle(PressableCardStyle())

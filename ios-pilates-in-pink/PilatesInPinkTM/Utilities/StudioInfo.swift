@@ -9,8 +9,8 @@ enum StudioInfo {
     static let phoneURL = URL(string: "tel://18667577465")
     static let website = URL(string: "https://www.pilatesinpinkstudio.com")
     static let contactPage = URL(string: "https://www.pilatesinpinkstudio.com/contact")
-    /// Set a support inbox to switch Help & Support to email.
-    static let supportEmail: String? = nil
+    /// Help & Support opens a message to this inbox.
+    static let supportEmail: String? = "support@pilatesinpinkstudio.com"
     static let mapsURL = URL(string: "http://maps.apple.com/?q=Pilates%20in%20Pink&address=6161%20Mayfield%20Rd%20Unit%20105,%20Brampton,%20ON%20L6P%202W8")
 
     static var helpURL: URL? {

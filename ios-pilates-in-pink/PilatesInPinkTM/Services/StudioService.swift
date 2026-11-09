@@ -88,6 +88,53 @@ nonisolated struct StudioService: Sendable {
         return try decode([ClassTypeInfo].self, from: response.data)
     }
 
+    /// Live Home banners (RLS returns only live rows), in display order.
+    func banners() async throws -> [HomeBanner] {
+        let response = try await client
+            .from("home_banners")
+            .select("id, sort_order, image_path, fallback_asset, headline, subtitle, button_label, action_type, action_value")
+            .order("sort_order")
+            .execute()
+        return try decode([HomeBanner].self, from: response.data)
+    }
+
+    /// Short-lived link to a private member photo.
+    func signedPhotoURL(path: String) async throws -> URL {
+        try await client.storage.from("avatars").createSignedURL(path: path, expiresIn: 3600)
+    }
+
+    // MARK: Profile writes
+
+    func updateProfile(firstName: String, lastName: String, marketing: Bool) async throws {
+        _ = try await client
+            .rpc("update_my_profile", params: NameParams(
+                p_first_name: firstName,
+                p_last_name: lastName,
+                p_email_marketing: marketing,
+                p_sms_marketing: marketing
+            ))
+            .execute()
+    }
+
+    /// `birthday` is yyyy-MM-dd.
+    func updateBirthday(_ birthday: String) async throws {
+        _ = try await client
+            .rpc("update_my_profile", params: BirthdayParams(p_birthday: birthday))
+            .execute()
+    }
+
+    /// Uploads a JPEG to `avatars/{uid}/avatar.jpg` and records it on the profile. Returns the path.
+    func uploadPhoto(_ jpeg: Data, userId: UUID) async throws -> String {
+        let path = "\(userId.uuidString.lowercased())/avatar.jpg"
+        _ = try await client.storage.from("avatars").upload(
+            path,
+            data: jpeg,
+            options: FileOptions(cacheControl: "3600", contentType: "image/jpeg", upsert: true)
+        )
+        _ = try await client.rpc("set_my_photo", params: PhotoParams(p_path: path)).execute()
+        return path
+    }
+
     // MARK: Writes (RPC only)
 
     func bookClass(sessionId: String, stationId: String) async throws {
@@ -190,4 +237,19 @@ nonisolated private struct WaitlistParams: Encodable, Sendable {
 
 nonisolated private struct LeaveWaitlistParams: Encodable, Sendable {
     let p_entry_id: String
+}
+
+nonisolated private struct NameParams: Encodable, Sendable {
+    let p_first_name: String
+    let p_last_name: String
+    let p_email_marketing: Bool
+    let p_sms_marketing: Bool
+}
+
+nonisolated private struct BirthdayParams: Encodable, Sendable {
+    let p_birthday: String
+}
+
+nonisolated private struct PhotoParams: Encodable, Sendable {
+    let p_path: String
 }

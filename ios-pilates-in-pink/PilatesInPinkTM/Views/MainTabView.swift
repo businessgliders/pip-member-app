@@ -4,7 +4,10 @@ import UIKit
 struct MainTabView: View {
     @State private var router = Router()
     @State private var store = StudioStore()
+    @State private var bannerStore = BannerStore()
     @Environment(\.horizontalSizeClass) private var hSize
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var wasInBackground = false
 
     var body: some View {
         // The tab bar writes the selection only through the router, which logs every change.
@@ -42,9 +45,22 @@ struct MainTabView: View {
         .sensoryFeedback(.selection, trigger: router.selectedTab)
         .environment(router)
         .environment(store)
+        .environment(bannerStore)
+        .task { await bannerStore.refresh() }
         .task {
             await store.refreshAll()
             await store.loadClassTypesIfNeeded()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .background: wasInBackground = true
+            case .active:
+                // Back in the foreground: pick up any new banners.
+                guard wasInBackground else { return }
+                wasInBackground = false
+                Task { await bannerStore.refresh() }
+            default: break
+            }
         }
     }
 

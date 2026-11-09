@@ -8,6 +8,21 @@ nonisolated struct MemberProfile: Decodable, Equatable, Sendable {
     let lastName: String?
     let email: String?
     let phone: String?
+    /// True until the member has finished onboarding (name + terms).
+    var needsOnboarding: Bool? = nil
+    /// Storage path in the private `avatars` bucket, e.g. "{uid}/avatar.jpg".
+    var photoUrl: String? = nil
+    /// ISO date (yyyy-MM-dd).
+    var birthday: String? = nil
+
+    var birthdayDate: Date? {
+        guard let birthday, !birthday.isEmpty else { return nil }
+        let f = DateFormatter()
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: String(birthday.prefix(10)))
+    }
 }
 
 /// Resolved name for display: profile names first, then auth metadata, then the email's local part.
