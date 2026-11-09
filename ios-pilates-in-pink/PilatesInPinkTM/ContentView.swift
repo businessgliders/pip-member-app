@@ -52,6 +52,8 @@ struct SignedInRoot: View {
     @Environment(\.calmMotion) private var calm
     @State private var stage: Stage
     @State private var profile: MemberProfile?
+    /// Accepted on the create-account step, so onboarding's name step skips the checkbox.
+    @State private var termsAccepted = false
     @State private var showsFinale = false
     /// Home sits slightly small and blurred under the finale, then settles as it leaves.
     @State private var homeSettled = true
@@ -83,7 +85,7 @@ struct SignedInRoot: View {
                 .transition(.opacity)
                 .task { await check() }
             case .onboarding(let start):
-                OnboardingView(profile: profile, userId: userId, start: start) {
+                OnboardingView(profile: profile, userId: userId, start: start, termsAccepted: termsAccepted) {
                     finishOnboarding()
                 }
                 .transition(.opacity)
@@ -109,33 +111,24 @@ struct SignedInRoot: View {
 
     private func check() async {
         let service = StudioService()
+        let createdAccount = OnboardingHandoff.createdAccount
+        OnboardingHandoff.createdAccount = false
+        termsAccepted = createdAccount
         do {
             let fetched = try await service.profile()
             profile = fetched
-            if fetched?.needsOnboarding == true {
-                if let pending = OnboardingHandoff.pending {
-                    // Just created an account with name + consent: save it, start at the photo.
-                    OnboardingHandoff.pending = nil
-                    try? await service.updateProfile(firstName: pending.firstName,
-                                                     lastName: pending.lastName,
-                                                     marketing: pending.marketing)
-                    stage = .onboarding(.photo)
-                } else {
-                    stage = .onboarding(.name)
-                }
-                return
-            }
-            if let pending = OnboardingHandoff.pending {
-                OnboardingHandoff.pending = nil
-                try? await service.updateProfile(firstName: pending.firstName,
-                                                 lastName: pending.lastName,
-                                                 marketing: pending.marketing)
-                stage = .onboarding(.photo)
+            // New accounts (email or phone) start at "looks like you're new here".
+            if fetched?.needsOnboarding == true || createdAccount {
+                stage = .onboarding(.name)
                 return
             }
             UserDefaults.standard.set(true, forKey: Self.onboardedKey(userId))
         } catch {
             print("Profile check failed: \(error.localizedDescription)")
+            if createdAccount {
+                stage = .onboarding(.name)
+                return
+            }
         }
         becomeReady(withFinale: isFresh && !UserDefaults.standard.bool(forKey: Self.finaleKey(userId)))
     }

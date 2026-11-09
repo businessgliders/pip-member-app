@@ -26,11 +26,8 @@ final class AuthFlow {
     var email = ""
     var password = ""
     var code = ""
-    var firstName = ""
-    var lastName = ""
     var newPassword = ""
     var agreesToTerms = false
-    var wantsMarketing = false
 
     // Status
     private(set) var isWorking = false
@@ -57,9 +54,7 @@ final class AuthFlow {
     var canSignIn: Bool { isEmailValid && !password.isEmpty }
 
     var canCreate: Bool {
-        !firstName.trimmingCharacters(in: .whitespaces).isEmpty
-            && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-            && isEmailValid && newPassword.count >= 6 && agreesToTerms
+        isEmailValid && newPassword.count >= 6 && agreesToTerms
     }
 
     static func isEmail(_ text: String) -> Bool {
@@ -287,18 +282,14 @@ final class AuthFlow {
             }
             return
         }
-        let first = firstName.trimmingCharacters(in: .whitespaces)
-        let last = lastName.trimmingCharacters(in: .whitespaces)
         isWorking = true
         setNotice(nil)
         defer { isWorking = false }
         do {
-            // The names and marketing choice are saved to the profile as soon as there's a
-            // session, and onboarding picks up at the photo step.
-            OnboardingHandoff.pending = OnboardingHandoff.Pending(
-                firstName: first, lastName: last, marketing: wantsMarketing
-            )
-            let hasSession = try await auth.signUp(firstName: first, lastName: last, email: trimmedEmail, password: newPassword)
+            // Terms were accepted here, so onboarding's name step shows only the names
+            // and the marketing choice.
+            OnboardingHandoff.createdAccount = true
+            let hasSession = try await auth.signUp(email: trimmedEmail, password: newPassword)
             if !hasSession {
                 animate {
                     password = ""
@@ -312,19 +303,13 @@ final class AuthFlow {
                 }
             }
         } catch {
-            OnboardingHandoff.pending = nil
+            OnboardingHandoff.createdAccount = false
             setNotice(Notice(kind: .error, text: FriendlyError.fromAuth(error)))
         }
     }
 }
 
-/// Carries the create-account details across the switch from signed-out to signed-in.
+/// Carries "just created an account (terms accepted)" across the switch to signed-in.
 enum OnboardingHandoff {
-    struct Pending: Equatable {
-        let firstName: String
-        let lastName: String
-        let marketing: Bool
-    }
-
-    @MainActor static var pending: Pending?
+    @MainActor static var createdAccount = false
 }

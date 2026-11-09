@@ -14,7 +14,15 @@ struct AuthFlowView: View {
     @FocusState private var focus: Field?
     @FocusState private var codeFocused: Bool
 
-    private enum Field: Hashable { case phone, email, password, firstName, lastName, newEmail }
+    private enum Field: Hashable { case phone, email, password, newEmail }
+
+    /// The focused field, from focus state (nil = keyboard down).
+    private var focusKey: String? {
+        if codeFocused { return "code" }
+        if newPasswordFocused { return "newPassword" }
+        if let focus { return "\(focus)" }
+        return nil
+    }
 
     var body: some View {
         ZStack {
@@ -58,7 +66,7 @@ struct AuthFlowView: View {
         case .code:
             focus = nil
             codeFocused = true
-        case .create: focus = flow.firstName.isEmpty ? .firstName : nil
+        case .create: focus = flow.trimmedEmail.isEmpty ? .newEmail : nil
         }
     }
 
@@ -70,7 +78,7 @@ struct AuthFlowView: View {
     private var noticeView: some View {
         if let notice = flow.notice {
             AuthNotice(kind: notice.kind, text: notice.text)
-                .padding(.top, 16)
+                .padding(.top, 12)
                 .transition(Motion.rise(calm: calm))
         }
     }
@@ -82,9 +90,9 @@ struct AuthFlowView: View {
     // MARK: A. Phone
 
     private var phoneStep: some View {
-        AuthStep {
+        AuthFormStep(focusKey: focusKey) {
             AuthTitle(text: "what's your number?")
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 AuthFieldBox {
                     Text("+1 🇨🇦")
                         .font(Typo.font(17, .medium, relativeTo: .body))
@@ -100,11 +108,9 @@ struct AuthFlowView: View {
                 }
             }
             .padding(.top, 28)
-            AuthCaption(text: "We'll text you a 6-digit code. Message and data rates may apply.")
-                .font(Typo.font(14, .regular, relativeTo: .footnote))
-                .padding(.top, 14)
+            AuthFootnote(text: "We'll text you a 6-digit code. Message and data rates may apply.")
+                .padding(.top, 8)
             noticeView
-        } actions: {
             Button {
                 run { await flow.sendPhoneCode(auth: auth) }
             } label: {
@@ -112,8 +118,11 @@ struct AuthFlowView: View {
             }
             .buttonStyle(CreamPillButtonStyle())
             .disabled(flow.e164 == nil || flow.isWorking)
-            Button("Use email instead") { flow.switchTo(.email) }
-                .buttonStyle(CreamLinkButtonStyle())
+            .authPrimaryAnchor()
+            .padding(.top, 20)
+            AuthLinks {
+                Button("Use email instead") { flow.switchTo(.email) }
+            }
         }
     }
 
@@ -131,9 +140,9 @@ struct AuthFlowView: View {
     // MARK: A2. Email
 
     private var emailStep: some View {
-        AuthStep {
+        AuthFormStep(focusKey: focusKey) {
             AuthTitle(text: "what's your email?")
-            VStack(spacing: 10) {
+            VStack(spacing: 12) {
                 AuthFieldBox(isFocused: focus == .email) {
                     TextField("", text: $flow.email, prompt: authPrompt("Email"))
                         .textContentType(.username)
@@ -153,16 +162,12 @@ struct AuthFlowView: View {
                 }
             }
             .padding(.top, 28)
+            Button("Forgot password?") { run { await flow.sendReset(auth: auth) } }
+                .buttonStyle(CreamSmallLinkButtonStyle())
+                .disabled(flow.isWorking)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, 4)
             noticeView
-            HStack(spacing: 0) {
-                Button("Email me a code instead") { run { await flow.sendEmailCode(auth: auth) } }
-                    .buttonStyle(CreamLinkButtonStyle())
-                Button("Forgot password?") { run { await flow.sendReset(auth: auth) } }
-                    .buttonStyle(CreamLinkButtonStyle())
-            }
-            .padding(.top, 10)
-            .disabled(flow.isWorking)
-        } actions: {
             Button {
                 run { await flow.signIn(auth: auth) }
             } label: {
@@ -170,17 +175,21 @@ struct AuthFlowView: View {
             }
             .buttonStyle(CreamPillButtonStyle())
             .disabled(!flow.canSignIn || flow.isWorking)
-            Button("New here? Create an account") { flow.startCreate() }
-                .buttonStyle(CreamLinkButtonStyle())
-            Button("Use phone number instead") { flow.switchTo(.phone) }
-                .buttonStyle(CreamLinkButtonStyle())
+            .authPrimaryAnchor()
+            .padding(.top, 16)
+            AuthLinks {
+                Button("Email me a code instead") { run { await flow.sendEmailCode(auth: auth) } }
+                    .disabled(flow.isWorking)
+                Button("Use phone number instead") { flow.switchTo(.phone) }
+                Button("New here? Create an account") { flow.startCreate() }
+            }
         }
     }
 
     // MARK: B. Code
 
     private var codeStep: some View {
-        AuthStep {
+        AuthFormStep(focusKey: focusKey) {
             AuthTitle(text: "enter your code")
             HStack(spacing: 6) {
                 Text("Sent to \(flow.destinationText)")
@@ -200,38 +209,21 @@ struct AuthFlowView: View {
             .padding(.top, 24)
             .opacity(flow.isWorking ? 0.6 : 1)
             noticeView
-        } actions: {
             ResendCountdown(availableAt: flow.resendAvailableAt) {
                 run { await flow.resend(auth: auth) }
             }
             .disabled(flow.isWorking)
+            .authPrimaryAnchor()
+            .padding(.top, 20)
         }
     }
 
     // MARK: C. Create account
 
     private var createStep: some View {
-        AuthStep {
-            AuthTitle(text: "looks like you're new here")
-            VStack(spacing: 10) {
-                HStack(spacing: 10) {
-                    AuthFieldBox(isFocused: focus == .firstName) {
-                        TextField("", text: $flow.firstName, prompt: authPrompt("First name"))
-                            .textContentType(.givenName)
-                            .textInputAutocapitalization(.words)
-                            .submitLabel(.next)
-                            .focused($focus, equals: .firstName)
-                            .onSubmit { focus = .lastName }
-                    }
-                    AuthFieldBox(isFocused: focus == .lastName) {
-                        TextField("", text: $flow.lastName, prompt: authPrompt("Last name"))
-                            .textContentType(.familyName)
-                            .textInputAutocapitalization(.words)
-                            .submitLabel(.next)
-                            .focused($focus, equals: .lastName)
-                            .onSubmit { focus = .newEmail }
-                    }
-                }
+        AuthFormStep(focusKey: focusKey) {
+            AuthTitle(text: "create your account")
+            VStack(spacing: 12) {
                 AuthFieldBox(isFocused: focus == .newEmail) {
                     TextField("", text: $flow.email, prompt: authPrompt("Email"))
                         .textContentType(.username)
@@ -259,28 +251,23 @@ struct AuthFlowView: View {
                 }
             }
             .padding(.top, 28)
-            VStack(alignment: .leading, spacing: 4) {
-                AuthCheckRow(isOn: $flow.agreesToTerms, label: termsAgreementText,
-                             accessibilityText: "I agree to the Terms and Privacy Policy")
-                AuthCheckRow(
-                    isOn: $flow.wantsMarketing,
-                    label: Text("Send me class openings, offers and studio news by email and text. Unsubscribe anytime."),
-                    accessibilityText: "Send me class openings, offers and studio news"
-                )
-            }
-            .padding(.top, 18)
+            AuthCheckRow(isOn: $flow.agreesToTerms, label: termsAgreementText,
+                         accessibilityText: "I agree to the Terms and Privacy Policy")
+                .padding(.top, 16)
             noticeView
-        } actions: {
             Button {
                 newPasswordFocused = false
                 run { await flow.createAccount(auth: auth) }
             } label: {
-                if flow.isWorking { workingLabel } else { Text("CONTINUE") }
+                if flow.isWorking { workingLabel } else { Text("CREATE ACCOUNT") }
             }
             .buttonStyle(CreamPillButtonStyle())
             .disabled(!flow.canCreate || flow.isWorking)
-            Button("I already have an account") { flow.back() }
-                .buttonStyle(CreamLinkButtonStyle())
+            .authPrimaryAnchor()
+            .padding(.top, 20)
+            AuthLinks {
+                Button("I already have an account") { flow.back() }
+            }
         }
     }
 }

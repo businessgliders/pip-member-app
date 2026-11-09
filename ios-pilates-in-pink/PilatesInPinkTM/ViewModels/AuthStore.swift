@@ -74,15 +74,9 @@ final class AuthStore {
     }
 
     /// Returns true when a session was created immediately (no email confirmation needed).
-    func signUp(firstName: String, lastName: String, email: String, password: String) async throws -> Bool {
-        let response = try await SupabaseService.client.auth.signUp(
-            email: email,
-            password: password,
-            data: [
-                "first_name": .string(firstName),
-                "last_name": .string(lastName)
-            ]
-        )
+    /// Names are collected in onboarding afterwards.
+    func signUp(email: String, password: String) async throws -> Bool {
+        let response = try await SupabaseService.client.auth.signUp(email: email, password: password)
         return response.session != nil
     }
 

@@ -8,6 +8,8 @@ struct OnboardingView: View {
 
     let profile: MemberProfile?
     let userId: UUID
+    /// Accepted on create-account already: the name step hides the Terms checkbox.
+    let termsAccepted: Bool
     let onFinish: () -> Void
 
     @Environment(AuthStore.self) private var auth
@@ -30,9 +32,10 @@ struct OnboardingView: View {
     private enum Field: Hashable { case first, last }
     private let service = StudioService()
 
-    init(profile: MemberProfile?, userId: UUID, start: Step, onFinish: @escaping () -> Void) {
+    init(profile: MemberProfile?, userId: UUID, start: Step, termsAccepted: Bool = false, onFinish: @escaping () -> Void) {
         self.profile = profile
         self.userId = userId
+        self.termsAccepted = termsAccepted
         self.onFinish = onFinish
         _step = State(initialValue: start)
         _firstName = State(initialValue: profile?.firstName ?? "")
@@ -132,13 +135,17 @@ struct OnboardingView: View {
     private var canSaveName: Bool {
         !firstName.trimmingCharacters(in: .whitespaces).isEmpty
             && !lastName.trimmingCharacters(in: .whitespaces).isEmpty
-            && agreesToTerms
+            && (agreesToTerms || termsAccepted)
+    }
+
+    private var focusKey: String? {
+        focus.map { "\($0)" }
     }
 
     private var nameStep: some View {
-        AuthStep {
+        AuthFormStep(focusKey: focusKey) {
             AuthTitle(text: "looks like you're new here")
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 AuthFieldBox(isFocused: focus == .first) {
                     TextField("", text: $firstName, prompt: authPrompt("First name"))
                         .textContentType(.givenName)
@@ -151,27 +158,33 @@ struct OnboardingView: View {
                     TextField("", text: $lastName, prompt: authPrompt("Last name"))
                         .textContentType(.familyName)
                         .textInputAutocapitalization(.words)
-                        .submitLabel(.done)
+                        .submitLabel(.continue)
                         .focused($focus, equals: .last)
-                        .onSubmit { focus = nil }
+                        .onSubmit {
+                            focus = nil
+                            saveName()
+                        }
                 }
             }
             .padding(.top, 28)
-            VStack(alignment: .leading, spacing: 4) {
-                AuthCheckRow(isOn: $agreesToTerms, label: termsAgreementText,
-                             accessibilityText: "I agree to the Terms and Privacy Policy")
+            VStack(alignment: .leading, spacing: 16) {
+                if !termsAccepted {
+                    AuthCheckRow(isOn: $agreesToTerms, label: termsAgreementText,
+                                 accessibilityText: "I agree to the Terms and Privacy Policy")
+                }
                 AuthCheckRow(
                     isOn: $wantsMarketing,
                     label: Text("Send me class openings, offers and studio news by email and text. Unsubscribe anytime."),
                     accessibilityText: "Send me class openings, offers and studio news"
                 )
             }
-            .padding(.top, 18)
+            .padding(.top, 16)
             noticeView
-        } actions: {
             Button(action: saveName) { primaryLabel("CONTINUE") }
                 .buttonStyle(CreamPillButtonStyle())
                 .disabled(!canSaveName || isWorking)
+                .authPrimaryAnchor()
+                .padding(.top, 20)
         }
     }
 

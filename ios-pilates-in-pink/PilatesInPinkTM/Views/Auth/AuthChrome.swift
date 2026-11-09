@@ -84,8 +84,105 @@ struct AuthProgress: View {
     }
 }
 
-/// One step's body: scrolling content with the buttons pinned under it. The buttons ride
-/// above the keyboard (the bottom safe area includes it), so it never covers them.
+extension EnvironmentValues {
+    /// True while a field in the step has focus (the keyboard is up): smaller headline,
+    /// caption hidden, less top padding.
+    @Entry var authCompact: Bool = false
+}
+
+enum AuthScroll {
+    /// The primary button's id; its frame reaches 16pt below the button.
+    static let primary = "auth.primary"
+}
+
+extension View {
+    /// Marks the step's primary button so focusing a field scrolls it (and the field above it)
+    /// into view with 16pt to spare above the keyboard.
+    func authPrimaryAnchor() -> some View {
+        background(alignment: .top) {
+            Color.clear
+                .id(AuthScroll.primary)
+                .padding(.bottom, -16)
+        }
+    }
+}
+
+func dismissAuthKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+/// A step with text fields: everything (fields, primary button, links) scrolls together, with
+/// nothing pinned, so the keyboard can never push buttons over the fields. The scroll view sits
+/// in the default keyboard safe area; focusing a field scrolls the field + primary button into
+/// view. `focusKey` is the focused field (nil = keyboard down), from focus state.
+struct AuthFormStep<Content: View>: View {
+    var focusKey: String?
+    @ViewBuilder var content: Content
+
+    @Environment(\.calmMotion) private var calm
+    @State private var viewportHeight: CGFloat = 0
+
+    private var compact: Bool { focusKey != nil }
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    content
+                }
+                .frame(maxWidth: 460, alignment: .leading)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 24)
+                .padding(.top, compact ? 12 : 32)
+                .padding(.bottom, 24)
+                .avoidingFold()
+                .frame(minHeight: viewportHeight, alignment: .top)
+                .background {
+                    // Tapping empty space puts the keyboard away.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { dismissAuthKeyboard() }
+                }
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDismissesKeyboard(.interactively)
+            .environment(\.authCompact, compact)
+            .animation(Motion.choose(Motion.ease, calm: calm), value: compact)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                viewportHeight = height
+                // Keyboard rose, changed, or the window rotated: keep the field + button visible.
+                if focusKey != nil { reveal(proxy) }
+            }
+            .onChange(of: focusKey) { _, new in
+                if new != nil { reveal(proxy) }
+            }
+        }
+    }
+
+    private func reveal(_ proxy: ScrollViewProxy) {
+        withAnimation(Motion.choose(Motion.ease, calm: calm)) {
+            proxy.scrollTo(AuthScroll.primary, anchor: .bottom)
+        }
+    }
+}
+
+/// Secondary links under the primary button: one per row, centred, 44pt each, 8pt below it.
+struct AuthLinks<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .buttonStyle(CreamLinkButtonStyle())
+        .frame(maxWidth: .infinity)
+        .padding(.top, 8)
+    }
+}
+
+/// One step's body for steps without text fields (photo, birthday, notifications):
+/// scrolling content with the buttons pinned under it.
 struct AuthStep<Content: View, Actions: View>: View {
     @ViewBuilder var content: Content
     @ViewBuilder var actions: Actions
@@ -122,25 +219,44 @@ struct AuthStep<Content: View, Actions: View>: View {
 /// 34pt Medium lowercase headline with tight tracking.
 struct AuthTitle: View {
     let text: String
+    @Environment(\.authCompact) private var compact
 
     var body: some View {
         Text(text)
-            .font(Typo.font(34, .medium, relativeTo: .largeTitle))
-            .tracking(-1)
+            .font(Typo.font(compact ? 26 : 34, .medium, relativeTo: .largeTitle))
+            .tracking(compact ? -0.7 : -1)
             .foregroundStyle(Theme.cream)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityAddTraits(.isHeader)
     }
 }
 
+/// Caption under a headline; fades out while the keyboard is up.
 struct AuthCaption: View {
+    let text: String
+    @Environment(\.authCompact) private var compact
+
+    var body: some View {
+        if !compact {
+            Text(text)
+                .font(Typo.font(16, .regular, relativeTo: .body))
+                .foregroundStyle(Theme.cream.opacity(0.72))
+                .fixedSize(horizontal: false, vertical: true)
+                .transition(.opacity)
+        }
+    }
+}
+
+/// Small note directly under a field (13pt), always visible.
+struct AuthFootnote: View {
     let text: String
 
     var body: some View {
         Text(text)
-            .font(Typo.font(16, .regular, relativeTo: .body))
-            .foregroundStyle(Theme.cream.opacity(0.72))
+            .font(Typo.font(13, .regular, relativeTo: .footnote))
+            .foregroundStyle(Theme.cream.opacity(0.65))
             .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -184,14 +300,29 @@ struct CreamLinkButtonStyle: ButtonStyle {
     }
 }
 
-/// A rounded checkbox with its label; the label can carry links.
+/// Small right-aligned text link that sits right under a field ("Forgot password?").
+struct CreamSmallLinkButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(Typo.font(14, .regular, relativeTo: .footnote))
+            .foregroundStyle(Theme.cream.opacity(0.85))
+            .underline(true, color: Theme.cream.opacity(0.3))
+            .frame(minHeight: 36)
+            .padding(.horizontal, 4)
+            .opacity(configuration.isPressed ? 0.5 : 1)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A 24pt rounded checkbox with its label 12pt to the right, top-aligned, wrapping in the
+/// column. The label can carry links.
 struct AuthCheckRow: View {
     @Binding var isOn: Bool
     let label: Text
     var accessibilityText: String
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 12) {
             Button {
                 isOn.toggle()
             } label: {
@@ -207,9 +338,10 @@ struct AuthCheckRow: View {
                         .scaleEffect(isOn ? 1 : 0.6)
                 }
                 .frame(width: 24, height: 24)
-                .frame(width: 44, height: 44, alignment: .topLeading)
-                .padding(.top, 10)
+                // 44pt tap target without changing the layout.
+                .padding(10)
                 .contentShape(Rectangle())
+                .padding(-10)
             }
             .buttonStyle(.plain)
             .animation(Motion.fade, value: isOn)
@@ -223,10 +355,9 @@ struct AuthCheckRow: View {
                 .foregroundStyle(Theme.cream.opacity(0.85))
                 .tint(Theme.cream)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 12)
+                .padding(.top, 2)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.leading, -10)
     }
 }
 
